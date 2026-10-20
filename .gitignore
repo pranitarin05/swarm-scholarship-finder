@@ -18,3 +18,8 @@ data/cache/
 Thumbs.db
 .vscode/
 .idea/
+
+server_pid.txt
+uvicorn_out.txt
+uvicorn_err.txt
+.pytest_cache/
