@@ -1,0 +1,130 @@
+================================================================================
+ScholarSwarm - DECISIONS LOG
+Every decision that shapes the build, and the reason WHY.
+(TetraNoodle AI Hackathon 2026)
+================================================================================
+
+Format: DECISION -> WHY (and what we cut if time runs out)
+
+--------------------------------------------------------------------------------
+D1.  Frontend: plain HTML + CSS + vanilla JavaScript, Tailwind via CDN
+     -> WHY: Judges must run it in 3 commands. No npm install, no build step,
+        no node_modules that can break on a demo laptop. SSE + live timeline is
+        simple with fetch/EventSource. Polish comes AFTER the pipeline works.
+        CUT ORDER: polish is the first thing we drop, never the SSE timeline.
+
+--------------------------------------------------------------------------------
+D2.  LLM: Groq primary (key in .env), Gemini/OpenAI as optional fallbacks,
+     and a deterministic MOCK LLM if no key is present
+     -> WHY: Groq key is available now; free-tier Llama models are fast and
+        cheap. Fallback chain is itself a judged feature (failure handling).
+        Mock keeps the pipeline runnable for tests with zero keys.
+
+--------------------------------------------------------------------------------
+D3.  Search: Tavily/Serper if a key is added later; DuckDuckGo HTML as the
+     always-available fallback (no key needed)
+     -> WHY: The demo must work TODAY with only the Groq key. DDG HTML
+        scraping is keyless and reliable enough for 10+ candidates.
+
+--------------------------------------------------------------------------------
+D4.  Storage: one JSON file per run (data/runs/<id>/) + a disk response cache
+     (data/cache/). No SQLite unless we finish everything early
+     -> WHY: PRD non-goal says no real database. JSON is debuggable, exportable,
+        and perfect for demo-mode replay.
+
+--------------------------------------------------------------------------------
+D5.  Orchestration: LangGraph StateGraph - Supervisor node + conditional edges
+     + parallel fan-out (Send) per candidate for the Verifier
+     -> WHY: 30 of 100 marks come from VISIBLE agent collaboration: routing,
+        parallel work, retries, critic bounce-backs. LangGraph makes this a
+        real graph, not one hidden prompt.
+
+--------------------------------------------------------------------------------
+D6.  Every extracted fact is a Field object:
+     {value, source_url, source_quote, fetched_at, confidence}
+     -> WHY: 20 marks for trustworthy sources. No quote = the field is shown
+        as "unverified" and NEVER as fact. This is the backbone of the product.
+
+--------------------------------------------------------------------------------
+D7.  Ranking is DETERMINISTIC Python code (rubric: fit 30 / funding 30 /
+     deadline 15 / confidence 15 / risk 10). The LLM only writes the
+     "why it fits" sentence, using verified facts only
+     -> WHY: Judges see a transparent score breakdown, not a black box.
+        Deterministic code can never hallucinate a score.
+
+--------------------------------------------------------------------------------
+D8.  Bounded loops: Scout may re-run at most 2 times (if <10 usable
+     candidates); Fact-Checker may bounce back at most 2 rounds
+     -> WHY: Real autonomy needs loops, but unbounded loops can hang a live
+        demo. Two rounds is enough to show recovery and still finish.
+
+--------------------------------------------------------------------------------
+D9.  Failure injection: API + UI toggle that deliberately breaks one layer
+     (search_down | page_404 | bad_json). Recovery must appear in the event
+     stream (retry -> fallback -> done)
+     -> WHY: 15 marks for failure handling, and the demo script has a
+        dedicated "failure moment" at 2:30.
+
+--------------------------------------------------------------------------------
+D10. Demo mode: replays a cached event log + result JSON for sample Rahul at
+     normal speed
+     -> WHY: Bad Wi-Fi or exhausted quotas must never kill the live demo.
+
+--------------------------------------------------------------------------------
+D11. PDF parsing: PyMuPDF text extraction; pytesseract OCR only if installed,
+     otherwise flag the field as missing/unknown
+     -> WHY: Marksheets can be scanned. Graceful degradation beats a crash,
+        and installing tesseract on a judge's machine is not an option.
+
+--------------------------------------------------------------------------------
+D12. Page fetching: httpx (timeout + browser UA) -> trafilatura/BeautifulSoup
+     text -> optional Playwright for JS-heavy pages. robots.txt respected,
+     per-domain rate limiting, disk cache for every fetch
+     -> WHY: University pages are inconsistent; caching makes re-runs and the
+        Fact-Checker's re-fetch cheap and polite.
+
+--------------------------------------------------------------------------------
+D13. GitHub enrichment: REST API with optional token; on 403/404 degrade to
+     resume-only profile with a VISIBLE warning in the UI
+     -> WHY: Rate limits and private profiles must not abort the whole run.
+
+--------------------------------------------------------------------------------
+D14. Secrets: .env only; .env.example committed with placeholder text; the
+     real Groq key never appears in code, logs, events, or git history
+     -> WHY: Security basics. (Rotate the key after the hackathon - it was
+        pasted in chat once.)
+
+--------------------------------------------------------------------------------
+D15. Phase discipline: build in 6 phases; run tests after each; commit after
+     each; STOP and wait for "continue"
+     -> WHY: Thin end-to-end on day 2 beats a perfect single agent on day 4.
+        The user stays in control of scope.
+
+--------------------------------------------------------------------------------
+D16. CUT ORDER if time runs out: (1) extra enrichment links (Kaggle/Scholar),
+     (2) Playwright fallback, (3) Docker, (4) UI polish.
+     NEVER cut: Verifier, Fact-Checker, failure handling, source quotes
+     -> WHY: Those four carry 30 + 20 + 15 = 65 of the 100 marks.
+
+--------------------------------------------------------------------------------
+D17. Sample data: fictional "Rahul" resume.pdf + marksheet.pdf generated
+     programmatically (reportlab) into data/sample_rahul/
+     -> WHY: The demo persona must be reproducible on a clean clone; no real
+        personal data in a public repo.
+
+--------------------------------------------------------------------------------
+D18. API surface: POST /api/runs, GET /api/runs/{id}/events (SSE),
+     GET /api/runs/{id}/result, POST /api/runs/{id}/sop,
+     GET /api/runs/{id}/export, POST /api/runs/{id}/inject-failure
+     -> WHY: Exactly what the UI and demo need; nothing speculative.
+
+--------------------------------------------------------------------------------
+D19. Opportunity sources: official domains only for facts (.edu, .ac.*,
+     daad.de, government portals). Aggregators may only DISCOVER names
+     -> WHY: 20 trust marks. An aggregator deadline is a hallucination risk.
+
+--------------------------------------------------------------------------------
+D20. Repo push: user pushes to their GitHub manually after each phase commit
+     -> WHY: User preference; remote link supplied by user when ready.
+        .env is gitignored so the key never leaves this machine.
+================================================================================

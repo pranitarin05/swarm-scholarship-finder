@@ -1,0 +1,208 @@
+================================================================================
+ScholarSwarm - FLOW
+How the system works, step by step, in plain language.
+================================================================================
+
+
+1. HAPPY PATH (one click -> top 5 scholarships + SOP)
+--------------------------------------------------------------------------------
+
+  [Browser]  student uploads resume.pdf + marksheet.pdf,
+             fills form (name, CGPA, interests, countries,
+             budget, GitHub URL, extra links),
+             clicks "Find my scholarships"
+        |
+        v
+  POST /api/runs  --->  run_id created, files saved,
+        |                run folder data/runs/<id>/ made
+        v
+  SUPERVISOR  (plans the run, emits plan event)
+        |
+        v
+  PROFILE ANALYST  (reads PDFs -> StudentProfile:
+        |             name, degree, CGPA normalised,
+        |             skills, projects, missing fields)
+        v
+  PROFILE ENRICHER  (GitHub API + extra links ->
+        |              EnrichedProfile with evidence)
+        v
+  OPPORTUNITY SCOUT  (LLM builds 8-12 search queries ->
+        |   ^            web search -> 12-20 candidates)
+        |   |
+        |   +--- fewer than 10 usable? ---> re-run with
+        |              |                   wider queries
+        |              +-------------------+  (max 2 loops)
+        v
+  SUPERVISOR (fan-out)
+        |
+        |   parallel, one branch per candidate
+        +--------+--------+--------+
+        v        v        v        v
+   VERIFIER  VERIFIER  VERIFIER  VERIFIER   (each visits the
+        |        |        |        |         OFFICIAL page,
+        |        |        |        |         extracts Fields
+        +--------+--------+--------+         with quotes)
+        v
+  MATCHER / RANKER  (deterministic rubric ->
+        |              top 5 + score breakdown)
+        v
+  APPLICATION WRITER  (SOP + document checklist
+        |                for opportunity #1)
+        v
+  FACT-CHECKER  ----pass---->  FINAL REPORT
+        |
+        +-- fail (max 2 rounds) --> back to
+              Verifier or Writer with notes
+        v
+  UI shows: opportunities table (10+),
+  top-5 cards, score breakdown, sources,
+  missing items, SOP editor, export buttons
+
+
+2. STATE FLOW (who writes what, in order)
+--------------------------------------------------------------------------------
+
+  Shared typed state (Pydantic) is passed node to node.
+  Each agent only writes its own section:
+
+  supervisor      -> run_plan, route_decision
+  analyst         -> profile (StudentProfile)
+  enricher        -> enriched (EnrichedProfile)
+  scout           -> candidates (list[Candidate], 12-20)
+  verifier x N    -> reports (list[EligibilityReport])
+  ranker          -> ranked (list[Ranked], top 5)
+  writer          -> sop (SOPDraft)
+  critic          -> audit (Audit), may flip status back
+                    to earlier stage with notes
+
+  Rules:
+  - Agents hand off TYPED objects, never free text.
+  - Nothing is deleted; later agents only add or update.
+  - If a field is unknown, it stays "unknown" - never guessed.
+
+
+3. EVENT / SSE FLOW (what the UI timeline shows)
+--------------------------------------------------------------------------------
+
+  every agent step
+        |
+        v
+  emit Event {ts, agent, type, message, data}
+  types: start | tool_call | result | retry |
+         fallback | handoff | error | done
+        |
+        v
+  per-run asyncio queue (RunStore)
+        |
+        v
+  GET /api/runs/<id>/events   (SSE stream)
+        |
+        v
+  browser EventSource
+        |
+        v
+  7 agent cards update live:
+  idle -> working -> (retrying) -> done / failed
+  + scrolling log lines + handoff arrows
+
+
+4. FAILURE FLOWS (each one is recoverable)
+--------------------------------------------------------------------------------
+
+  Search API down / quota
+    detect: HTTP error or empty results
+    recover: retry w/ backoff -> DuckDuckGo fallback
+             -> cached seed queries
+
+  Official page 404 / timeout / blocked
+    detect: status code or empty text
+    recover: retry -> search page by program name
+             -> else mark field "unverified", keep going
+
+  Scanned PDF (no text)
+    detect: text length below threshold
+    recover: OCR if tesseract installed
+             -> else flag missing fields in UI
+
+  LLM returns invalid JSON
+    detect: Pydantic validation error
+    recover: 1 repair prompt -> fallback model
+             -> mock response
+
+  LLM rate limit (429)
+    detect: HTTP 429
+    recover: backoff -> next provider
+
+  GitHub 403 / 404 / rate limit
+    detect: response code
+    recover: use token if set -> else resume-only
+             enrichment with visible warning
+
+  Fewer than 10 usable candidates
+    detect: Supervisor counts verified candidates
+    recover: loop back to Scout with broader queries
+             (max 2 loops)
+
+  Hallucinated deadline / amount
+    detect: Fact-Checker cannot find the quote
+             in the re-fetched page
+    recover: reject -> send back to Verifier (max 2)
+             -> else downgrade field to "unverified"
+             -> unverified fields lose ranking weight
+
+  Candidate too slow
+    detect: per-candidate timeout
+    recover: cancel that branch, continue others
+
+  Injected failure (demo toggle)
+    UI switch -> POST /api/runs/<id>/inject-failure
+    -> next search/fetch/LLM call fails on purpose
+    -> normal recovery chain makes it visible in
+       the timeline (retry -> fallback -> done)
+
+
+5. DEMO MODE FLOW (offline safety net)
+--------------------------------------------------------------------------------
+
+  toggle "Demo mode" ON before clicking Run
+        |
+        v
+  server loads data/demo_cache/events.json
+             + data/demo_cache/result.json
+        |
+        v
+  replays events into the SSE stream with
+  realistic timing (looks like a live run)
+        |
+        v
+  results page renders the cached report,
+  SOP editor works on the cached draft
+  -> demo survives bad Wi-Fi / dead quotas
+
+
+6. API SURFACE (what exists and why)
+--------------------------------------------------------------------------------
+
+  POST   /api/runs
+         multipart: resume, marksheet, profile fields,
+         preferences -> creates run, starts graph in
+         background -> returns run_id
+
+  GET    /api/runs/<id>/events
+         SSE stream of Event objects for the timeline
+
+  GET    /api/runs/<id>/result
+         final JSON: profile, candidates (10+), top 5,
+         reports, sop, audit, score breakdowns
+
+  POST   /api/runs/<id>/sop
+         body: {candidate_id} -> regenerate SOP for the
+         opportunity the student actually wants
+
+  GET    /api/runs/<id>/export
+         Markdown (and HTML) report download
+
+  POST   /api/runs/<id>/inject-failure
+         body: {mode: search_down|page_404|bad_json}
+         arms the failure toggle for the next call
+================================================================================
