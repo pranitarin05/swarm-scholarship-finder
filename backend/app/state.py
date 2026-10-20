@@ -284,5 +284,6 @@ class RunState(BaseModel):
     plan: RunPlan = RunPlan()
     scout_loops: int = 0
     critic_rounds: int = 0
+    inject_fail: str = ""
     errors: list[str] = []
     warnings: list[str] = []

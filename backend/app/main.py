@@ -71,19 +71,20 @@ async def create_run(
         marksheet_path=marksheet_path,
         github_url=prefs_raw.get("github_url", ""),
         extra_links=prefs_raw.get("extra_links", []),
+        inject_fail=inject_failure,
     )
     if inject_failure:
         ctx.failure_mode = inject_failure
     state_json = state.model_dump_json()
     (run_dir / "state.json").write_text(state_json, encoding="utf-8")
-    asyncio.create_task(_execute(run_id, state))
+    asyncio.create_task(_execute(run_id, state, inject_fail=inject_fail))
     return {"run_id": run_id}
 
 
-async def _execute(run_id: str, state: RunState) -> None:
+async def _execute(run_id: str, state: RunState, inject_fail: str = "") -> None:
     """Run the graph; always mark the run finished so SSE can close."""
     try:
-        final = await run_pipeline(state)
+        final = await run_pipeline(state, inject_fail=inject_fail)
         result = final.model_dump(mode="json")
         run_store.set_result(run_id, result)
         emit_event(run_id, "supervisor", "done", "Run complete", {"status": "done"})
