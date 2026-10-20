@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from .agents import analyst, enricher, scout, supervisor
+from .agents import analyst, enricher, ranker, scout, supervisor, verifier
 from .config import settings
 from .events import emit_event
 from .state import RunState
@@ -61,6 +61,8 @@ def build_graph():
     graph.add_node("scout", scout.discover)
     graph.add_node("check_candidates", check_candidates)
     graph.add_node("rediscover", rediscover_node)
+    graph.add_node("verifier", verifier.verify_all)
+    graph.add_node("ranker", ranker.rank)
     graph.add_edge(START, "supervisor")
     graph.add_edge("supervisor", "analyst")
     graph.add_edge("analyst", "enricher")
@@ -69,9 +71,11 @@ def build_graph():
     graph.add_conditional_edges(
         "check_candidates",
         _route_after_check,
-        {"rediscover": "rediscover", "verify": END},
+        {"rediscover": "rediscover", "verify": "verifier"},
     )
     graph.add_edge("rediscover", "check_candidates")
+    graph.add_edge("verifier", "ranker")
+    graph.add_edge("ranker", END)
     return graph.compile()
 
 
