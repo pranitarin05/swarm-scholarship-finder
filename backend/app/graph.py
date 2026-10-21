@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from langgraph.graph import END, START, StateGraph
 
-from .agents import analyst, enricher, ranker, scout, supervisor, verifier
+from .agents import analyst, critic, enricher, ranker, scout, supervisor, verifier, writer
 from .config import settings
 from .events import emit_event
 from .state import RunState
@@ -46,6 +46,12 @@ def _route_after_check(state: RunState) -> str:
     return "verify"
 
 
+def _route_after_critic(state: RunState) -> str:
+    if state.audit and state.audit.rejected and state.critic_rounds < settings.max_critic_rounds:
+        return "revise"
+    return "done"
+
+
 async def rediscover_node(state: RunState) -> dict:
     return await scout.rediscover(
         state, note=f"fewer than {settings.min_candidates} usable candidates"
@@ -63,6 +69,8 @@ def build_graph():
     graph.add_node("rediscover", rediscover_node)
     graph.add_node("verifier", verifier.verify_all)
     graph.add_node("ranker", ranker.rank)
+    graph.add_node("writer", writer.write_sop)
+    graph.add_node("critic", critic.audit)
     graph.add_edge(START, "supervisor")
     graph.add_edge("supervisor", "analyst")
     graph.add_edge("analyst", "enricher")
@@ -75,7 +83,13 @@ def build_graph():
     )
     graph.add_edge("rediscover", "check_candidates")
     graph.add_edge("verifier", "ranker")
-    graph.add_edge("ranker", END)
+    graph.add_edge("ranker", "writer")
+    graph.add_edge("writer", "critic")
+    graph.add_conditional_edges(
+        "critic",
+        _route_after_critic,
+        {"revise": "verifier", "done": END},
+    )
     return graph.compile()
 
 

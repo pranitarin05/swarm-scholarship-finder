@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ScholarSwarm — AI Scholarship Finder</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <header class="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold text-white">Scholar<span class="text-blue-400">Swarm</span></h1>
+      <p class="text-xs text-slate-400">7-agent AI scholarship finder — every fact is source-linked</p>
+    </div>
+    <div class="flex items-center gap-3 text-sm">
+      <label class="flex items-center gap-2 cursor-pointer">
+        <input type="checkbox" id="demoMode" class="accent-blue-500" />
+        <span class="text-slate-300">Demo mode</span>
+      </label>
+      <select id="injectFailure" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs">
+        <option value="">No failure</option>
+        <option value="search_down">Break search API</option>
+        <option value="page_404">Break official page (404)</option>
+        <option value="bad_json">Corrupt LLM JSON</option>
+      </select>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto p-6 grid gap-6">
+    <!-- INTAKE -->
+    <section id="intake" class="bg-slate-900 border border-slate-800 rounded-xl p-6">
+      <h2 class="font-semibold mb-4">1 &middot; Your profile</h2>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Resume (PDF) *</label>
+          <input type="file" id="resume" accept=".pdf" class="w-full text-sm file:mr-3 file:rounded file:bg-blue-600 file:text-white file:px-3 file:py-1 file:border-0 bg-slate-950 border border-slate-700 rounded p-2" />
+          <label class="block text-xs text-slate-400 mt-3 mb-1">Marksheet (PDF)</label>
+          <input type="file" id="marksheet" accept=".pdf" class="w-full text-sm file:mr-3 file:rounded file:bg-blue-600 file:text-white file:px-3 file:py-1 file:border-0 bg-slate-950 border border-slate-700 rounded p-2" />
+        </div>
+        <div class="grid gap-3">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Target countries (comma-separated)</label>
+            <input id="countries" value="Canada, Germany, Singapore" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Level</label>
+              <select id="level" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm">
+                <option>Master's</option><option>PhD</option><option>Bachelor's</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs text-slate-400 mb-1">Budget</label>
+              <input id="budget" value="fully funded" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">GitHub profile URL</label>
+            <input id="github" placeholder="https://github.com/username" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Extra links (comma-separated, optional)</label>
+            <input id="extraLinks" placeholder="https://kaggle.com/you, https://scholar.google.com/..." class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm" />
+          </div>
+        </div>
+      </div>
+      <div class="mt-5 flex items-center gap-4">
+        <button id="runBtn" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 px-6 py-2.5 rounded-lg font-semibold text-sm">
+          Find my scholarships
+        </button>
+        <span id="runStatus" class="text-sm text-slate-400"></span>
+      </div>
+    </section>
+
+    <!-- AGENT TIMELINE -->
+    <section id="timelineSection" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-6">
+      <h2 class="font-semibold mb-4">2 &middot; Agents working</h2>
+      <div id="agentCards" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 mb-4"></div>
+      <div id="eventLog" class="bg-slate-950 border border-slate-800 rounded-lg p-4 h-64 overflow-y-auto font-mono text-xs space-y-1"></div>
+    </section>
+
+    <!-- PROFILE RESULT -->
+    <section id="profileSection" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-6">
+      <h2 class="font-semibold mb-3">3 &middot; Profile understood</h2>
+      <div id="profileCard" class="text-sm text-slate-300"></div>
+    </section>
+
+    <!-- OPPORTUNITIES TABLE -->
+    <section id="candidatesSection" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-6">
+      <h2 class="font-semibold mb-3">Discovered opportunities <span id="candidateCount" class="text-xs text-slate-400"></span></h2>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="text-left text-xs text-slate-400 border-b border-slate-800">
+              <th class="py-2 pr-4">Opportunity</th><th class="pr-4">Country</th>
+              <th class="pr-4">Status</th><th>Source</th>
+            </tr>
+          </thead>
+          <tbody id="candidatesBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TOP 5 -->
+    <section id="top5Section" class="hidden">
+      <h2 class="font-semibold mb-3">Top 5 recommendations</h2>
+      <div id="top5Cards" class="grid gap-4"></div>
+    </section>
+
+    <!-- SOP -->
+    <section id="sopSection" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-6">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">Statement of Purpose (edit &amp; download)</h2>
+        <div class="flex gap-2">
+          <button id="downloadSop" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded">Download .md</button>
+          <button id="downloadReport" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded">Export full report</button>
+        </div>
+      </div>
+      <textarea id="sopEditor" rows="18" class="w-full bg-slate-950 border border-slate-700 rounded p-4 text-sm font-mono"></textarea>
+      <div id="evidenceMap" class="mt-4 text-xs text-slate-400"></div>
+      <div id="checklist" class="mt-4"></div>
+    </section>
+
+    <footer class="text-center text-xs text-slate-600 py-6">
+      ScholarSwarm · TetraNoodle AI Hackathon 2026 · verify everything on the official page before applying
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

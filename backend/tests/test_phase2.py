@@ -80,6 +80,9 @@ def test_search_falls_back_to_ddg(monkeypatch):
         async def get(self, url):
             return FakeResp()
 
+        async def post(self, url, data=None):
+            return FakeResp()
+
     monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
     response = asyncio.run(web_search("DAAD scholarship Germany"))
     assert response.ok
@@ -170,6 +173,10 @@ def test_scout_survives_total_search_failure(monkeypatch):
     monkeypatch.setattr("backend.app.agents.scout.web_search", fake_search)
     state = RunState(run_id="test-scout-fail", preferences=Preferences(countries=["Canada"]))
     output = asyncio.run(discover(state, llm=LLMClient(providers=[MockProvider()])))
-    assert output["candidates"] == []
+    # total search failure falls back to the seed candidate list (PRD sec.12),
+    # which the verifier must still verify live — never treated as truth
+    assert len(output["candidates"]) >= 10
+    assert all(c.official_url for c in output["candidates"])
     assert output["scout_loops"] == 1
     assert state.warnings
+    assert any("seed" in w for w in state.warnings)

@@ -18,6 +18,13 @@ from .config import settings
 
 T = TypeVar("T", bound=BaseModel)
 
+FAILURE_INJECTION: dict[str, str] = {}
+
+
+def set_failure_injection(mode: str) -> None:
+    """Demo toggle: 'bad_json' makes the next structured calls return garbage."""
+    FAILURE_INJECTION["mode"] = mode
+
 
 class LLMError(RuntimeError):
     """Raised when every provider failed to produce valid output."""
@@ -234,6 +241,7 @@ class LLMClient:
         )
         base_system = (system + "\n\n" if system else "") + schema_hint
         errors: list[str] = []
+        injected_bad = FAILURE_INJECTION.get("mode") == "bad_json"
         for provider in self.providers:
             messages = [
                 ChatMessage(role="system", content=base_system),
@@ -244,6 +252,10 @@ class LLMClient:
             except (httpx.HTTPError, KeyError, IndexError, TypeError) as exc:
                 errors.append(f"{provider.name}: transport {type(exc).__name__}")
                 continue
+            if injected_bad:
+                FAILURE_INJECTION["mode"] = ""
+                raw = "{'broken': json,,"  # deliberately unparseable
+                errors.append(f"{provider.name}: injected bad_json")
             try:
                 parsed = schema.model_validate(_extract_json(raw))
                 self.last_provider = provider.name

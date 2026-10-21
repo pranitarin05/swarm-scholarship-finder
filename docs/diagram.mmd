@@ -1,0 +1,21 @@
+graph TD
+    A[Upload resume + marksheet + links + preferences] --> B[SUPERVISOR: plan & route]
+    B --> C[PROFILE ANALYST: PDFs -> StudentProfile]
+    C --> D[PROFILE ENRICHER: GitHub API + links -> EnrichedProfile]
+    D --> E[OPPORTUNITY SCOUT: queries -> live search -> 12-20 candidates]
+    E --> F{SUPERVISOR: >= 10 usable?}
+    F -- no, max 2 loops --> E
+    F -- yes --> G[SUPERVISOR fan-out: parallel branches]
+    G --> H1[VERIFIER: fetch official page 1]
+    G --> H2[VERIFIER: fetch official page 2]
+    G --> H3[VERIFIER: fetch official page N]
+    H1 & H2 & H3 --> I[MATCHER / RANKER: deterministic rubric -> Top 5]
+    I --> J[APPLICATION WRINTER: SOP + checklist + evidence map]
+    J --> K{FACT-CHECKER: re-fetch every cited quote}
+    K -- pass --> L[FINAL REPORT: top 5 + sources + SOP]
+    K -- fail, max 2 rounds --> H1
+    K -- writer claim untraceable --> J
+
+    style B fill:#1d4ed8,color:#fff
+    style K fill:#b91c1c,color:#fff
+    style L fill:#15803d,color:#fff

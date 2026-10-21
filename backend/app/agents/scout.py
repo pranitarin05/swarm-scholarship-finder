@@ -1,6 +1,7 @@
 """Opportunity Scout: profile + preferences -> 12-20 real candidates."""
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Optional
 
@@ -46,6 +47,23 @@ FALLBACK_QUERIES = [
     "Germany tuition free master's computer science international students",
     "graduate research assistantship computer science Canada master's official",
     "Commonwealth scholarship Master's official",
+]
+
+# Last-resort seed names+URLs (PRD sec.12). Never treated as truth:
+# the Verifier must still fetch each official page and quote it live.
+SEED_CANDIDATES = [
+    ("DAAD Scholarships (Germany)", "https://www.daad.de/en/studying-in-germany/scholarships/daad-scholarships/", "Germany", "scholarship"),
+    ("EduCanada Scholarships", "https://www.educanada.ca/scholarships-bourses/non_can/index.aspx?lang=eng", "Canada", "scholarship"),
+    ("NUS Graduate Admissions & Scholarships", "https://www.nus.edu.sg/oam/", "Singapore", "scholarship"),
+    ("Deutschlandstipendium", "https://www.deutschlandstipendium.de/", "Germany", "scholarship"),
+    ("Mitacs Globalink Graduate Fellowship", "https://www.mitacs.ca/en/programs/globalink/globalink-graduate-fellowship", "Canada", "fellowship"),
+    ("NTU Singapore Graduate Education", "https://www.ntu.edu.sg/", "Singapore", "program"),
+    ("TU Munich Fees & Financial Aid", "https://www.tum.de/en/studies/fees-and-financial-aid", "Germany", "program"),
+    ("Singapore International Graduate Award (SINGA)", "https://www.a-star.edu.sg/", "Singapore", "scholarship"),
+    ("University of Bonn Master's Programmes", "https://www.uni-bonn.de/en/studying/degree-programs", "Germany", "program"),
+    ("Heidelberg University Study Programme", "https://www.uni-heidelberg.de/en/study/subject-catalogue", "Germany", "program"),
+    ("McGill Graduate Admissions", "https://www.mcgill.ca/gradapplicants/", "Canada", "program"),
+    ("Ontario Tech Graduate Studies", "https://uoit.ca/future-students/graduate/", "Canada", "program"),
 ]
 
 OFFICIAL_HINTS = (
@@ -145,6 +163,8 @@ async def discover(state: RunState, llm: Optional[LLMClient] = None,
     fail_mode = inject_fail or state.inject_fail
     all_results: list[SearchResult] = []
     for i, query in enumerate(queries):
+        if i:
+            await asyncio.sleep(1.5)  # politeness: avoid bot challenges
         emit_event(run_id, "scout", "tool_call", f"[{i+1}/{len(queries)}] Searching: {query[:70]}")
         response = await web_search(query, cache=cache, inject_fail=fail_mode)
         if not response.ok:
@@ -172,10 +192,20 @@ async def discover(state: RunState, llm: Optional[LLMClient] = None,
 
     if not merged:
         emit_event(
-            run_id, "scout", "error",
-            "No candidates found from any provider; supervisor will decide",
+            run_id, "scout", "fallback",
+            "All search providers failed; using built-in seed candidate list "
+            "(will still be verified live on official pages)",
         )
-        return {"candidates": [], "scout_loops": state.scout_loops + 1}
+        state.warnings.append(
+            "search providers unavailable; started from seed candidate list"
+        )
+        for name, url, country, ctype in SEED_CANDIDATES:
+            merged.append(Candidate(
+                id=re.sub(r"[^a-z0-9]+", "-", url.lower())[-60:].strip("-"),
+                name=name, country=country, level=state.preferences.level,
+                type=ctype, url=url, official_url=url,
+                found_via_query="seed fallback", discovered_via="seed",
+            ))
 
     kept = merged[:20]
     official_count = sum(1 for c in kept if c.official_url)
@@ -208,6 +238,20 @@ async def rediscover(state: RunState, note: str) -> dict:
     existing = {c.url.rstrip("/").lower() for c in state.candidates}
     added = [c for c in fresh if c.url.rstrip("/").lower() not in existing]
     merged = state.candidates + added[:10]
+    if len(merged) < 5:
+        emit_event(
+            run_id, "scout", "fallback",
+            "Widened search still thin; supplementing with seed candidate list",
+        )
+        for name, url, country, ctype in SEED_CANDIDATES:
+            if url.rstrip("/").lower() in existing:
+                continue
+            merged.append(Candidate(
+                id=re.sub(r"[^a-z0-9]+", "-", url.lower())[-60:].strip("-"),
+                name=name, country=country, level=state.preferences.level,
+                type=ctype, url=url, official_url=url,
+                found_via_query="seed fallback", discovered_via="seed",
+            ))
     emit_event(
         run_id, "scout", "result",
         f"Widened search added {min(len(added), 10)} new candidates "

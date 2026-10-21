@@ -1,0 +1,28 @@
+/* ScholarSwarm - small custom layer on top of Tailwind CDN */
+.agent-card {
+  transition: all 0.25s ease;
+}
+.agent-card.idle { opacity: 0.45; }
+.agent-card.working {
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgb(59 130 246 / 0.6), 0 0 18px rgb(59 130 246 / 0.25);
+  animation: pulse 1.6s ease-in-out infinite;
+}
+.agent-card.done { opacity: 1; box-shadow: 0 0 0 1px rgb(34 197 94 / 0.45); }
+.agent-card.retrying { box-shadow: 0 0 0 1px rgb(245 158 11 / 0.6); animation: pulse 1s ease-in-out infinite; }
+.agent-card.failed { box-shadow: 0 0 0 1px rgb(239 68 68 / 0.6); }
+@keyframes pulse {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.25); }
+}
+.event-line.handoff { color: #a78bfa; }
+.event-line.error { color: #f87171; }
+.event-line.retry, .event-line.fallback { color: #fbbf24; }
+.event-line.done { color: #4ade80; }
+.score-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #3b82f6, #8b5cf6);
+}
+.badge-verified { background: #14532d; color: #86efac; }
+.badge-unverified { background: #44403c; color: #d6d3d1; }
