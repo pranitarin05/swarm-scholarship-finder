@@ -25,6 +25,12 @@ class RunContext:
         self.status = "created"
         self.result: dict[str, Any] = {}
         self.failure_mode: str = ""
+        self.closed: bool = False
+
+    def close_queue(self) -> None:
+        if not self.closed:
+            self.closed = True
+            self.queue.put_nowait(None)
 
     def run_dir(self) -> Path:
         d = settings.runs_dir / self.run_id
@@ -74,13 +80,16 @@ class RunStore:
             ctx.persist_event(event)
         except OSError:
             pass
-        ctx.queue.put_nowait(event)
+        if not ctx.closed:
+            ctx.queue.put_nowait(event)
         return event
 
     def set_status(self, run_id: str, status: str) -> None:
         ctx = self._runs.get(run_id)
         if ctx:
             ctx.status = status
+            if status in ("done", "failed"):
+                ctx.close_queue()
 
     def set_result(self, run_id: str, result: dict[str, Any]) -> None:
         ctx = self._runs.get(run_id)
@@ -95,6 +104,7 @@ class RunStore:
                 )
             except OSError:
                 pass
+            ctx.close_queue()
 
     async def stream(self, run_id: str) -> AsyncIterator[str]:
         """SSE generator: replay history, then forward live events until done."""
@@ -104,7 +114,7 @@ class RunStore:
             return
         for event in list(ctx.events):
             yield _sse(event.model_dump())
-        if ctx.status in ("done", "failed"):
+        if ctx.status in ("done", "failed") and ctx.queue.empty():
             yield _sse({"type": "stream_end", "status": ctx.status})
             return
         while True:
@@ -113,9 +123,6 @@ class RunStore:
                 yield _sse({"type": "stream_end", "status": ctx.status})
                 return
             yield _sse(event.model_dump())
-            if event.type == "done":
-                yield _sse({"type": "stream_end", "status": ctx.status})
-                return
 
     def load_replay(self, run_id: str, events: list[dict[str, Any]],
                     result: dict[str, Any]) -> RunContext:

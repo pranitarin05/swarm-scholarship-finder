@@ -80,7 +80,7 @@ async def create_run(
         ctx.failure_mode = inject_failure
     state_json = state.model_dump_json()
     (run_dir / "state.json").write_text(state_json, encoding="utf-8")
-    asyncio.create_task(_execute(run_id, state, inject_fail=inject_fail))
+    asyncio.create_task(_execute(run_id, state, inject_fail=inject_failure))
     return {"run_id": run_id}
 
 
@@ -89,17 +89,17 @@ async def _execute(run_id: str, state: RunState, inject_fail: str = "") -> None:
     try:
         final = await run_pipeline(state, inject_fail=inject_fail)
         result = final.model_dump(mode="json")
-        run_store.set_result(run_id, result)
         emit_event(run_id, "supervisor", "done", "Run complete", {"status": "done"})
+        run_store.set_result(run_id, result)
         run_store.set_status(run_id, "done")
     except Exception as exc:
-        run_store.set_status(run_id, "failed")
         emit_event(
             run_id, "supervisor", "error",
             f"Run failed: {type(exc).__name__}: {exc}",
         )
-        run_store.set_result(run_id, {"status": "failed", "error": str(exc)})
         emit_event(run_id, "supervisor", "done", "Run ended with errors")
+        run_store.set_result(run_id, {"status": "failed", "error": str(exc)})
+        run_store.set_status(run_id, "failed")
 
 
 async def _replay_demo(run_id: str) -> None:
@@ -109,6 +109,7 @@ async def _replay_demo(run_id: str) -> None:
     if not events_path.exists() or not result_path.exists():
         emit_event(run_id, "supervisor", "error", "Demo cache missing")
         emit_event(run_id, "supervisor", "done", "Demo unavailable")
+        run_store.set_status(run_id, "failed")
         return
     events = json.loads(events_path.read_text(encoding="utf-8"))
     result = json.loads(result_path.read_text(encoding="utf-8"))
@@ -124,9 +125,32 @@ async def _replay_demo(run_id: str) -> None:
             raw.get("data", {}),
         )
         await asyncio.sleep(0.35)
-    run_store.set_result(run_id, result)
     emit_event(run_id, "supervisor", "done", "Demo run complete")
+    run_store.set_result(run_id, result)
     run_store.set_status(run_id, "done")
+
+
+@app.get("/api/sample/files/{filename}")
+async def get_sample_file(filename: str):
+    """Serve sample PDF files for instant 1-click testing."""
+    sample_dir = ROOT_DIR / "data" / "sample_rahul"
+    path = (sample_dir / filename).resolve()
+    if not path.is_relative_to(sample_dir) or not path.exists():
+        raise HTTPException(status_code=404, detail="Sample file not found")
+    return FileResponse(path, media_type="application/pdf", filename=filename)
+
+
+@app.get("/api/sample/profile")
+async def get_sample_profile() -> dict:
+    """Return default profile fields for the demo persona (Rahul)."""
+    return {
+        "name": "Rahul Sharma",
+        "countries": "Canada, Germany, Singapore",
+        "level": "Master's",
+        "budget": "fully funded",
+        "github_url": "https://github.com/rahul-ai-scholar",
+        "extra_links": "https://scholar.google.com/citations?user=sample, https://kaggle.com/rahulsharma",
+    }
 
 
 @app.get("/api/runs/{run_id}/events")

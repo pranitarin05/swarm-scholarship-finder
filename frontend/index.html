@@ -1,132 +1,475 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ScholarSwarm — AI Scholarship Finder</title>
+  <title>ScholarSwarm — Autonomous Multi-Agent Scholarship Finder</title>
+  <meta name="description" content="7-agent LangGraph system that discovers, verifies official sources with quotes, deterministically ranks scholarships, and drafts fact-checked SOPs." />
+  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              200: '#c7d2fe',
+              300: '#a5b4fc',
+              400: '#818cf8',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              800: '#3730a3',
+              900: '#312e81',
+              950: '#1e1b4b',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Feather Icons for crisp vector glyphs -->
+  <script src="https://unpkg.com/feather-icons"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
-<body class="bg-slate-950 text-slate-100 min-h-screen">
-  <header class="border-b border-slate-800 px-6 py-4 flex items-center justify-between">
-    <div>
-      <h1 class="text-xl font-bold text-white">Scholar<span class="text-blue-400">Swarm</span></h1>
-      <p class="text-xs text-slate-400">7-agent AI scholarship finder — every fact is source-linked</p>
-    </div>
-    <div class="flex items-center gap-3 text-sm">
-      <label class="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" id="demoMode" class="accent-blue-500" />
-        <span class="text-slate-300">Demo mode</span>
-      </label>
-      <select id="injectFailure" class="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-xs">
-        <option value="">No failure</option>
-        <option value="search_down">Break search API</option>
-        <option value="page_404">Break official page (404)</option>
-        <option value="bad_json">Corrupt LLM JSON</option>
-      </select>
+<body class="bg-slate-950 text-slate-100 min-h-screen selection:bg-indigo-500 selection:text-white antialiased">
+
+  <!-- TOP ANNOUNCEMENT BANNER -->
+  <div class="border-b border-indigo-500/20 bg-indigo-950/40 px-4 py-2 text-center text-xs text-indigo-300 flex items-center justify-center gap-2">
+    <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-indigo-500/20 border border-indigo-400/30 font-semibold text-[11px] text-indigo-200">
+      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+      TetraNoodle AI Hackathon 2026
+    </span>
+    <span>7-Agent LangGraph Swarm &middot; Deterministic 5-Pillar Ranking &middot; Zero Hallucinations Trust Architecture</span>
+  </div>
+
+  <!-- NAVIGATION HEADER -->
+  <header class="sticky top-0 z-50 border-b border-slate-800/80 bg-slate-950/80 backdrop-blur-md px-6 py-3.5">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-blue-600 to-cyan-400 p-0.5 shadow-lg shadow-indigo-500/25 flex items-center justify-center">
+          <div class="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
+            <svg class="w-5 h-5 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-xl font-bold tracking-tight text-white">Scholar<span class="text-gradient">Swarm</span></h1>
+            <span class="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300">v1.0 Live</span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">7-agent autonomous system — every fact is source-quoted</p>
+        </div>
+      </div>
+
+      <!-- DEMO & FAILURE CONTROLS -->
+      <div class="flex flex-wrap items-center gap-3 text-xs">
+        <!-- 1-Click Load Sample Rahul Button -->
+        <button id="loadSampleBtn" type="button" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-950/80 hover:bg-indigo-900 border border-indigo-700/60 text-indigo-200 transition-all shadow-sm shadow-indigo-950">
+          <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+          </svg>
+          <span class="font-medium">Load Sample (Rahul, IIT)</span>
+        </button>
+
+        <!-- Demo Mode Toggle -->
+        <label class="flex items-center gap-2 cursor-pointer bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-1.5 hover:border-slate-700 transition">
+          <input type="checkbox" id="demoMode" class="w-3.5 h-3.5 accent-indigo-500 rounded cursor-pointer" />
+          <span class="text-slate-300 font-medium">Demo replay mode</span>
+        </label>
+
+        <!-- Failure Injection Menu -->
+        <div class="flex items-center gap-1.5 bg-slate-900/90 border border-slate-800 rounded-lg px-2.5 py-1">
+          <span class="text-amber-400" title="Simulate real-world failures to test self-healing resilience">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+            </svg>
+          </span>
+          <select id="injectFailure" class="bg-transparent border-0 text-slate-300 text-xs focus:ring-0 focus:outline-none cursor-pointer">
+            <option value="" class="bg-slate-900">Normal (No failure)</option>
+            <option value="search_down" class="bg-slate-900">Break Search API (Trigger Fallback)</option>
+            <option value="page_404" class="bg-slate-900">Break Official Page 404 (Quarantine)</option>
+            <option value="bad_json" class="bg-slate-900">Corrupt LLM JSON (Auto Repair)</option>
+          </select>
+        </div>
+      </div>
     </div>
   </header>
 
-  <main class="max-w-6xl mx-auto p-6 grid gap-6">
-    <!-- INTAKE -->
-    <section id="intake" class="bg-slate-900 border border-slate-800 rounded-xl p-6">
-      <h2 class="font-semibold mb-4">1 &middot; Your profile</h2>
-      <div class="grid md:grid-cols-2 gap-4">
-        <div>
-          <label class="block text-xs text-slate-400 mb-1">Resume (PDF) *</label>
-          <input type="file" id="resume" accept=".pdf" class="w-full text-sm file:mr-3 file:rounded file:bg-blue-600 file:text-white file:px-3 file:py-1 file:border-0 bg-slate-950 border border-slate-700 rounded p-2" />
-          <label class="block text-xs text-slate-400 mt-3 mb-1">Marksheet (PDF)</label>
-          <input type="file" id="marksheet" accept=".pdf" class="w-full text-sm file:mr-3 file:rounded file:bg-blue-600 file:text-white file:px-3 file:py-1 file:border-0 bg-slate-950 border border-slate-700 rounded p-2" />
+  <!-- MAIN CONTAINER -->
+  <main class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8 space-y-8">
+
+    <!-- HERO INTRODUCTION -->
+    <div class="relative overflow-hidden rounded-2xl glass-panel p-6 sm:p-8 border border-indigo-500/15">
+      <div class="relative z-10 max-w-3xl">
+        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-semibold mb-3">
+          <span>LangGraph Multi-Agent Architecture</span> &bull; <span>Verified Official Sources</span>
         </div>
-        <div class="grid gap-3">
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+          Find your dream scholarship with <span class="text-gradient">proven facts &amp; quotes</span>
+        </h2>
+        <p class="mt-2 text-sm text-slate-300 leading-relaxed">
+          Upload your resume and transcripts. Our autonomous swarm scans official universities (<code class="text-indigo-300">.edu</code>, <code class="text-indigo-300">.ac.*</code>, <code class="text-indigo-300">daad.de</code>), extracts verifiable funding rules with source quotes, runs deterministic scoring, and crafts your Statement of Purpose with complete evidence traceability.
+        </p>
+      </div>
+      <!-- Background Ambient Glow -->
+      <div class="absolute -right-20 -bottom-20 w-80 h-80 rounded-full bg-indigo-600/10 blur-3xl pointer-events-none"></div>
+    </div>
+
+    <!-- 1 · PROFILE INTAKE SECTION -->
+    <section id="intake" class="glass-panel rounded-2xl p-6 sm:p-8 space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-4">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <span class="flex items-center justify-center w-6 h-6 rounded-full bg-indigo-600 text-xs text-white font-bold">1</span>
+            Candidate Profile &amp; Preferences
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">Provide academic documents and research objectives</p>
+        </div>
+        <div class="text-xs text-slate-400">
+          <span class="text-emerald-400 font-semibold">&#10003; Privacy:</span> parsed in-memory, never stored publicly
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-12 gap-6">
+        
+        <!-- Left: PDF Upload Zones (5 cols) -->
+        <div class="lg:col-span-5 space-y-4">
+          <!-- Resume Upload Zone -->
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Target countries (comma-separated)</label>
-            <input id="countries" value="Canada, Germany, Singapore" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm" />
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>Resume / CV (PDF) <span class="text-rose-400">*</span></span>
+              <span id="resumeBadge" class="text-[11px] text-slate-500">Required</span>
+            </label>
+            <div id="resumeDropzone" class="dropzone rounded-xl p-4 text-center cursor-pointer bg-slate-950/60 hover:bg-slate-900/60 transition">
+              <input type="file" id="resume" accept=".pdf" class="hidden" />
+              <div class="flex flex-col items-center justify-center gap-2">
+                <div class="w-10 h-10 rounded-full bg-indigo-500/10 text-indigo-400 flex items-center justify-center">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                  </svg>
+                </div>
+                <div>
+                  <span id="resumeFileName" class="text-sm font-medium text-slate-200">Click or drop Resume PDF</span>
+                  <p id="resumeFileSize" class="text-[11px] text-slate-400">PyMuPDF structured extraction</p>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="grid grid-cols-2 gap-3">
+
+          <!-- Marksheet Upload Zone -->
+          <div>
+            <label class="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>Marksheet / Transcript (PDF)</span>
+              <span id="marksheetBadge" class="text-[11px] text-slate-500">Optional</span>
+            </label>
+            <div id="marksheetDropzone" class="dropzone rounded-xl p-4 text-center cursor-pointer bg-slate-950/60 hover:bg-slate-900/60 transition">
+              <input type="file" id="marksheet" accept=".pdf" class="hidden" />
+              <div class="flex flex-col items-center justify-center gap-2">
+                <div class="w-10 h-10 rounded-full bg-slate-800 text-slate-400 flex items-center justify-center">
+                  <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                  </svg>
+                </div>
+                <div>
+                  <span id="marksheetFileName" class="text-sm font-medium text-slate-200">Click or drop Marksheet PDF</span>
+                  <p id="marksheetFileSize" class="text-[11px] text-slate-400">Normalizes CGPA to 100% scale</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Preferences & Links (7 cols) -->
+        <div class="lg:col-span-7 grid gap-4">
+          <!-- Countries with Quick Tags -->
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label for="countries" class="text-xs font-semibold text-slate-300">Target Countries</label>
+              <span class="text-[11px] text-slate-500">Comma-separated</span>
+            </div>
+            <input id="countries" value="Canada, Germany, Singapore" class="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition" />
+            <div class="flex flex-wrap gap-1.5 mt-2 text-[11px]">
+              <span class="text-slate-400 text-[10px] self-center">Presets:</span>
+              <button type="button" class="country-tag px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition" data-country="Canada">+ Canada</button>
+              <button type="button" class="country-tag px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition" data-country="Germany">+ Germany</button>
+              <button type="button" class="country-tag px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition" data-country="Singapore">+ Singapore</button>
+              <button type="button" class="country-tag px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition" data-country="UK">+ UK</button>
+              <button type="button" class="country-tag px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition" data-country="USA">+ USA</button>
+              <button type="button" class="country-tag px-2 py-0.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition" data-country="Switzerland">+ Switzerland</button>
+            </div>
+          </div>
+
+          <div class="grid sm:grid-cols-2 gap-4">
             <div>
-              <label class="block text-xs text-slate-400 mb-1">Level</label>
-              <select id="level" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm">
-                <option>Master's</option><option>PhD</option><option>Bachelor's</option>
+              <label for="level" class="block text-xs font-semibold text-slate-300 mb-1.5">Target Degree Level</label>
+              <select id="level" class="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition">
+                <option value="Master's">Master's (MSc / MEng)</option>
+                <option value="PhD">Doctorate (PhD)</option>
+                <option value="Bachelor's">Bachelor's (BSc / BEng)</option>
               </select>
             </div>
             <div>
-              <label class="block text-xs text-slate-400 mb-1">Budget</label>
-              <input id="budget" value="fully funded" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm" />
+              <label for="budget" class="block text-xs font-semibold text-slate-300 mb-1.5">Funding Target</label>
+              <input id="budget" value="fully funded" class="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition" />
             </div>
           </div>
+
           <div>
-            <label class="block text-xs text-slate-400 mb-1">GitHub profile URL</label>
-            <input id="github" placeholder="https://github.com/username" class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm" />
+            <label for="github" class="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>GitHub Profile URL</span>
+              <span class="text-[11px] text-slate-500">Live Repo &amp; Star Verification</span>
+            </label>
+            <div class="relative">
+              <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                  <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+                </svg>
+              </span>
+              <input id="github" placeholder="https://github.com/username" class="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl pl-10 pr-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition" />
+            </div>
           </div>
+
           <div>
-            <label class="block text-xs text-slate-400 mb-1">Extra links (comma-separated, optional)</label>
-            <input id="extraLinks" placeholder="https://kaggle.com/you, https://scholar.google.com/..." class="w-full bg-slate-950 border border-slate-700 rounded px-3 py-2 text-sm" />
+            <label for="extraLinks" class="block text-xs font-semibold text-slate-300 mb-1.5 flex items-center justify-between">
+              <span>Extra Evidence Links</span>
+              <span class="text-[11px] text-slate-500">Google Scholar, Kaggle, Portfolio</span>
+            </label>
+            <input id="extraLinks" placeholder="https://kaggle.com/you, https://scholar.google.com/citations?user=..." class="w-full bg-slate-950/80 border border-slate-700/80 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition" />
           </div>
         </div>
       </div>
-      <div class="mt-5 flex items-center gap-4">
-        <button id="runBtn" class="bg-blue-600 hover:bg-blue-500 disabled:opacity-40 px-6 py-2.5 rounded-lg font-semibold text-sm">
-          Find my scholarships
-        </button>
-        <span id="runStatus" class="text-sm text-slate-400"></span>
+
+      <!-- Submit & Status Bar -->
+      <div class="border-t border-slate-800 pt-5 flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+          <button id="runBtn" class="relative group px-8 py-3.5 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-indigo-600 via-blue-600 to-indigo-600 hover:from-indigo-500 hover:to-blue-500 shadow-lg shadow-indigo-500/30 hover:shadow-indigo-500/50 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]">
+            <span class="flex items-center gap-2">
+              <svg id="runIcon" class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              </svg>
+              <svg id="runSpinner" class="hidden animate-spin w-4 h-4 text-white" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              <span>Find My Scholarships</span>
+            </span>
+          </button>
+          <span id="runStatus" class="text-sm font-medium text-indigo-300"></span>
+        </div>
+        <div class="text-xs text-slate-400 flex items-center gap-3">
+          <span>&bull; Bounded loops: max 2 scout &amp; 2 critic rounds</span>
+          <span>&bull; Fallback provider chain</span>
+        </div>
       </div>
     </section>
 
-    <!-- AGENT TIMELINE -->
-    <section id="timelineSection" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-6">
-      <h2 class="font-semibold mb-4">2 &middot; Agents working</h2>
-      <div id="agentCards" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-2 mb-4"></div>
-      <div id="eventLog" class="bg-slate-950 border border-slate-800 rounded-lg p-4 h-64 overflow-y-auto font-mono text-xs space-y-1"></div>
+    <!-- 2 · LIVE AGENT SWARM TIMELINE -->
+    <section id="timelineSection" class="hidden glass-panel rounded-2xl p-6 sm:p-8 space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <span class="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-xs text-white font-bold">2</span>
+            Autonomous Agent Swarm (Live Execution)
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">LangGraph StateGraph — visible handoffs, retries, and critic audit loops</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-300">
+            <span id="streamIndicator" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span id="streamStatusText">SSE Stream Active</span>
+          </span>
+          <button id="clearLogBtn" type="button" class="text-xs px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 transition">
+            Clear Logs
+          </button>
+        </div>
+      </div>
+
+      <!-- Agent Cards Grid (8 Agents) -->
+      <div id="agentCards" class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2.5">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+
+      <!-- Event Stream Terminal & Filter -->
+      <div class="space-y-2">
+        <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div class="flex items-center gap-1.5" id="logFilters">
+            <span class="text-slate-400 mr-1">Filter:</span>
+            <button class="filter-btn active px-2.5 py-1 rounded-md bg-indigo-600 text-white font-medium" data-filter="all">All</button>
+            <button class="filter-btn px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300" data-filter="tool_call">Tools</button>
+            <button class="filter-btn px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300" data-filter="result">Results</button>
+            <button class="filter-btn px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300" data-filter="retry">Retries / Fallbacks</button>
+            <button class="filter-btn px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300" data-filter="handoff">Handoffs</button>
+          </div>
+          <div class="flex items-center gap-2 text-slate-400">
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input type="checkbox" id="autoScrollLog" checked class="w-3 h-3 accent-indigo-500 rounded" />
+              <span>Auto-scroll</span>
+            </label>
+            <span id="eventCountBadge" class="text-[11px] text-slate-500">0 events</span>
+          </div>
+        </div>
+        <div id="eventLog" class="bg-slate-950/90 border border-slate-800/80 rounded-xl p-4 h-64 overflow-y-auto font-mono text-xs space-y-1 shadow-inner">
+          <!-- Live events populate here -->
+        </div>
+      </div>
     </section>
 
-    <!-- PROFILE RESULT -->
-    <section id="profileSection" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-6">
-      <h2 class="font-semibold mb-3">3 &middot; Profile understood</h2>
-      <div id="profileCard" class="text-sm text-slate-300"></div>
+    <!-- 3 · PROFILE UNDERSTOOD -->
+    <section id="profileSection" class="hidden glass-panel rounded-2xl p-6 sm:p-8 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <h2 class="text-lg font-bold text-white flex items-center gap-2">
+          <span class="flex items-center justify-center w-6 h-6 rounded-full bg-cyan-600 text-xs text-white font-bold">3</span>
+          Student Academic Profile (Analyzed &amp; Enriched)
+        </h2>
+        <span class="text-xs text-slate-400">PyMuPDF &middot; GitHub API &middot; GPA Normalization</span>
+      </div>
+      <div id="profileCard" class="text-sm text-slate-300">
+        <!-- Rendered by app.js -->
+      </div>
     </section>
 
-    <!-- OPPORTUNITIES TABLE -->
-    <section id="candidatesSection" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-6">
-      <h2 class="font-semibold mb-3">Discovered opportunities <span id="candidateCount" class="text-xs text-slate-400"></span></h2>
+    <!-- 4 · TOP 5 RECOMMENDATIONS -->
+    <section id="top5Section" class="hidden space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h2 class="text-2xl font-bold text-white flex items-center gap-2.5">
+            <span class="flex items-center justify-center w-7 h-7 rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 text-slate-950 text-xs font-black shadow-md shadow-amber-500/20">★</span>
+            Top 5 Verified Scholarships
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">Deterministic 5-factor ranking &middot; every single requirement verified on official portal</p>
+        </div>
+        <div class="flex items-center gap-2 text-xs">
+          <span class="px-3 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-semibold">
+            ✓ Official Domains Only
+          </span>
+          <span class="px-3 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300">
+            Fit 30 / Funding 30 / Deadline 15 / Trust 15 / Risk 10
+          </span>
+        </div>
+      </div>
+
+      <div id="top5Cards" class="grid gap-5">
+        <!-- Rendered by app.js -->
+      </div>
+    </section>
+
+    <!-- 5 · ALL DISCOVERED OPPORTUNITIES TABLE -->
+    <section id="candidatesSection" class="hidden glass-panel rounded-2xl p-6 sm:p-8 space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            Discovered Opportunities Pool
+            <span id="candidateCount" class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-indigo-300"></span>
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">Full multi-engine discovery search results before eligibility verification</p>
+        </div>
+        <input id="candidateSearchInput" placeholder="Filter by program or country..." class="bg-slate-950/80 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500" />
+      </div>
+
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
-            <tr class="text-left text-xs text-slate-400 border-b border-slate-800">
-              <th class="py-2 pr-4">Opportunity</th><th class="pr-4">Country</th>
-              <th class="pr-4">Status</th><th>Source</th>
+            <tr class="text-left text-xs font-semibold text-slate-400 border-b border-slate-800 bg-slate-950/40">
+              <th class="py-3 px-4 rounded-l-lg">Opportunity Name</th>
+              <th class="py-3 px-4">Country</th>
+              <th class="py-3 px-4">Verification</th>
+              <th class="py-3 px-4 rounded-r-lg">Source Authority</th>
             </tr>
           </thead>
-          <tbody id="candidatesBody"></tbody>
+          <tbody id="candidatesBody" class="divide-y divide-slate-800/60">
+            <!-- Populated by app.js -->
+          </tbody>
         </table>
       </div>
     </section>
 
-    <!-- TOP 5 -->
-    <section id="top5Section" class="hidden">
-      <h2 class="font-semibold mb-3">Top 5 recommendations</h2>
-      <div id="top5Cards" class="grid gap-4"></div>
-    </section>
-
-    <!-- SOP -->
-    <section id="sopSection" class="hidden bg-slate-900 border border-slate-800 rounded-xl p-6">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="font-semibold">Statement of Purpose (edit &amp; download)</h2>
-        <div class="flex gap-2">
-          <button id="downloadSop" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded">Download .md</button>
-          <button id="downloadReport" class="text-xs bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded">Export full report</button>
+    <!-- 6 · STATEMENT OF PURPOSE & APPLICATION SUITE -->
+    <section id="sopSection" class="hidden glass-panel rounded-2xl p-6 sm:p-8 space-y-6">
+      <div class="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800 pb-4">
+        <div>
+          <h2 class="text-lg font-bold text-white flex items-center gap-2">
+            <span class="flex items-center justify-center w-6 h-6 rounded-full bg-purple-600 text-xs text-white font-bold">4</span>
+            Application Suite &amp; Statement of Purpose
+          </h2>
+          <p class="text-xs text-slate-400 mt-0.5">Zero hallucinations &middot; claims map 1:1 to verified resume &amp; GitHub evidence</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="flex rounded-lg bg-slate-800/80 p-0.5 text-xs">
+            <button id="viewFormattedSopBtn" type="button" class="px-3 py-1.5 rounded-md bg-indigo-600 text-white font-medium transition">Formatted Preview</button>
+            <button id="viewRawSopBtn" type="button" class="px-3 py-1.5 rounded-md text-slate-300 hover:text-white transition">Markdown Editor</button>
+          </div>
+          <button id="copySopBtn" type="button" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+            </svg>
+            <span>Copy SOP</span>
+          </button>
+          <button id="downloadSop" class="text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-3.5 py-1.5 rounded-lg shadow-sm transition">
+            Download SOP (.md)
+          </button>
+          <button id="downloadReport" class="text-xs bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-medium px-3.5 py-1.5 rounded-lg transition">
+            Export Full Audit Report
+          </button>
         </div>
       </div>
-      <textarea id="sopEditor" rows="18" class="w-full bg-slate-950 border border-slate-700 rounded p-4 text-sm font-mono"></textarea>
-      <div id="evidenceMap" class="mt-4 text-xs text-slate-400"></div>
-      <div id="checklist" class="mt-4"></div>
+
+      <!-- Dual Preview / Editor -->
+      <div id="sopFormattedView" class="sop-prose bg-slate-950/80 border border-slate-800 rounded-xl p-6 min-h-[350px] overflow-y-auto">
+        <!-- Rendered formatted markdown -->
+      </div>
+      <textarea id="sopEditor" rows="18" class="hidden w-full bg-slate-950 border border-slate-800 rounded-xl p-5 text-sm font-mono text-slate-200 focus:outline-none focus:border-indigo-500 transition leading-relaxed"></textarea>
+
+      <!-- Evidence Map & Checklist Grid -->
+      <div class="grid lg:grid-cols-2 gap-6 pt-2">
+        <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-5">
+          <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-2">
+            <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Evidence Traceability Matrix
+          </h3>
+          <p class="text-[11px] text-slate-500 mb-3">Every assertion in the SOP maps to verified resume or GitHub credentials</p>
+          <div id="evidenceMap" class="text-xs text-slate-400 space-y-1.5 max-h-60 overflow-y-auto pr-1"></div>
+        </div>
+
+        <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-5">
+          <h3 class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2 flex items-center gap-2">
+            <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
+            </svg>
+            Official Application Checklist
+          </h3>
+          <p class="text-[11px] text-slate-500 mb-3">Required documents, tests, and submission criteria extracted from portal</p>
+          <div id="checklist" class="max-h-60 overflow-y-auto pr-1"></div>
+        </div>
+      </div>
     </section>
 
-    <footer class="text-center text-xs text-slate-600 py-6">
-      ScholarSwarm · TetraNoodle AI Hackathon 2026 · verify everything on the official page before applying
+    <!-- FOOTER -->
+    <footer class="border-t border-slate-900 pt-8 pb-12 text-center text-xs text-slate-500 space-y-2">
+      <div class="flex items-center justify-center gap-4 text-slate-400">
+        <span class="font-semibold text-slate-300">ScholarSwarm</span>
+        <span>&bull;</span>
+        <span>TetraNoodle AI Hackathon 2026</span>
+        <span>&bull;</span>
+        <span>LangGraph &amp; FastAPI SSE</span>
+      </div>
+      <p class="text-[11px]">
+        Integrity Guarantee: Every fact links to official source quotes or is labeled unverified. Always verify deadlines on official pages before applying.
+      </p>
     </footer>
+
   </main>
 
+  <!-- TOAST NOTIFICATION CONTAINER -->
+  <div id="toast-container"></div>
+
+  <!-- APPLICATION SCRIPT -->
   <script src="app.js"></script>
 </body>
 </html>

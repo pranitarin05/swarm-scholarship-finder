@@ -22,4 +22,5 @@ Thumbs.db
 server_pid.txt
 uvicorn_out.txt
 uvicorn_err.txt
+demo_record_*.txt
 .pytest_cache/
