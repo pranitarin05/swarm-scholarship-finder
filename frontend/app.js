@@ -362,20 +362,29 @@ function renderResults(data) {
         const badge = st === "verified" ? `<span class="badge-verified px-2 py-0.5 rounded text-[11px]">Verified</span>` :
                       st === "partial" ? `<span class="badge-unverified px-2 py-0.5 rounded text-[11px]">Partial</span>` :
                       `<span class="bg-slate-800 text-slate-400 px-2 py-0.5 rounded text-[11px]">Unverified</span>`;
-        const authority = c.official_url ? 
-          `<span class="text-emerald-400 text-xs flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Official Portal (.edu)</span>` :
-          `<span class="text-slate-500 text-xs flex items-center gap-1"><span class="w-1.5 h-1.5 rounded-full bg-slate-600"></span> Aggregator Discovery</span>`;
+        const applyUrl = rep.official_url || c.official_url || c.url || '#';
+        const deadlineVal = (rep.deadline && rep.deadline.value) ? escapeHtml(rep.deadline.value) : "<span class='text-slate-500'>Rolling / Check portal</span>";
         return `
           <tr class="hover:bg-slate-900/60 transition">
             <td class="py-3 px-4 font-medium">
-              <a href="${escapeHtml(c.url || c.official_url)}" target="_blank" rel="noopener" class="text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1.5">
+              <a href="${escapeHtml(applyUrl)}" target="_blank" rel="noopener" class="text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1.5">
                 <span>${escapeHtml(c.name)}</span>
-                <svg class="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                <svg class="w-3 h-3 text-slate-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
               </a>
             </td>
-            <td class="py-3 px-4 text-slate-300">${escapeHtml(c.country || "Global")}</td>
+            <td class="py-3 px-4 text-slate-300 text-xs">${escapeHtml(c.country || "Global")}</td>
+            <td class="py-3 px-4 text-xs font-semibold text-amber-300">
+              <div class="flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                <span>${deadlineVal}</span>
+              </div>
+            </td>
             <td class="py-3 px-4">${badge}</td>
-            <td class="py-3 px-4">${authority}</td>
+            <td class="py-3 px-4">
+              <a href="${escapeHtml(applyUrl)}" target="_blank" rel="noopener" class="px-3 py-1 rounded-lg bg-emerald-600/20 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-300 text-xs font-semibold inline-flex items-center gap-1.5 transition">
+                <span>Apply Link ↗</span>
+              </a>
+            </td>
           </tr>`;
       }).join("");
     };
@@ -395,6 +404,9 @@ function renderResults(data) {
       const cand = candById[r.candidate_id] || { name: r.candidate_name, url: "", country: "" };
       const rep = repById[r.candidate_id] || {};
       const bd = r.breakdown || {};
+      const applyUrl = rep.official_url || cand.official_url || cand.url || '#';
+      const deadlineVal = (rep.deadline && rep.deadline.value) ? rep.deadline.value : "Rolling / See portal";
+      const isDeadlineVerified = rep.deadline && rep.deadline.confidence && rep.deadline.confidence !== "unverified" && rep.deadline.source_quote;
 
       const rankBadge = i === 0 ? "bg-amber-400/20 text-amber-300 border-amber-400/40" :
                         i === 1 ? "bg-slate-300/20 text-slate-200 border-slate-300/40" :
@@ -426,21 +438,39 @@ function renderResults(data) {
         <div class="glass-panel glass-panel-interactive rounded-2xl p-6 sm:p-7 space-y-5 border border-slate-800">
           <!-- Card Header -->
           <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="space-y-1.5 max-w-2xl">
-              <div class="flex items-center gap-2">
+            <div class="space-y-2.5 max-w-2xl">
+              <!-- Badges Row: Rank, Country, Verification, and Prominent Last Date to Apply -->
+              <div class="flex flex-wrap items-center gap-2">
                 <span class="px-2.5 py-0.5 rounded-full border text-xs font-black ${rankBadge}">Rank #${i + 1}</span>
                 <span class="text-xs text-slate-400">&bull;</span>
                 <span class="text-xs text-slate-400 font-medium">${escapeHtml(cand.country || "Global")}</span>
-                ${rep.status === "verified" ? `<span class="badge-verified px-2 py-0.5 rounded text-[10px] font-semibold">100% Official Domain Verified</span>` : ""}
+                ${rep.status === "verified" ? `<span class="badge-verified px-2 py-0.5 rounded text-[10px] font-semibold">100% Official Portal Verified</span>` : ""}
+                
+                <!-- PROMINENT LAST DATE TO APPLY CALLOUT -->
+                <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-gradient-to-r from-amber-950/80 to-rose-950/80 border border-amber-500/40 text-amber-200 text-xs font-semibold shadow-sm">
+                  <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                  </svg>
+                  <span>Last Date to Apply: <strong class="text-white">${escapeHtml(deadlineVal)}</strong></span>
+                  ${isDeadlineVerified ? `<span class="inline-block w-2 h-2 rounded-full bg-emerald-400 ml-0.5" title="Verified from official page"></span>` : ''}
+                </div>
               </div>
+
+              <!-- Scholarship Title -->
               <h3 class="text-xl font-bold text-white tracking-tight">${escapeHtml(cand.name)}</h3>
-              <div class="flex items-center gap-3 pt-0.5">
-                <a href="${escapeHtml(cand.url || rep.official_url || '#')}" target="_blank" rel="noopener" class="text-xs font-semibold text-indigo-400 hover:text-indigo-300 hover:underline flex items-center gap-1">
-                  <span>Visit official university application portal</span>
-                  <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+
+              <!-- DIRECT APPLY LINK IN HEADER -->
+              <div class="flex flex-wrap items-center gap-3 pt-1">
+                <a href="${escapeHtml(applyUrl)}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-500 hover:to-teal-500 shadow-lg shadow-emerald-600/30 transition-all hover:scale-[1.02] active:scale-[0.98]">
+                  <svg class="w-4 h-4 text-emerald-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+                  </svg>
+                  <span>Direct Link to Apply for Scholarship</span>
                 </a>
+                <span class="text-xs text-slate-400">Portal: <span class="font-mono text-slate-300 text-[11px]">${escapeHtml(applyUrl.split('/')[2] || 'official portal')}</span></span>
               </div>
             </div>
+
             <!-- Overall Score Pill -->
             <div class="text-right bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 shadow-sm min-w-[110px]">
               <div class="text-3xl font-black text-gradient">${r.total_score}</div>
@@ -462,24 +492,32 @@ function renderResults(data) {
           <div class="pt-3 border-t border-slate-800 space-y-1">
             <div class="text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">Verified Admissions Facts &amp; Requirements:</div>
             ${fieldHtml("Funding Coverage", rep.funding, `fund-${i}`)}
-            ${fieldHtml("Application Deadline", rep.deadline, `dl-${i}`)}
+            <div class="p-2 rounded-lg bg-amber-950/20 border border-amber-500/20 my-1">
+              ${fieldHtml("Application Deadline (Last Date to Apply)", rep.deadline, `dl-${i}`)}
+            </div>
             ${fieldHtml("Minimum GPA / Grade", rep.min_grade, `grade-${i}`)}
             ${fieldHtml("Degree Requirement", rep.degree_req, `deg-${i}`)}
             ${fieldHtml("English Proficiency", rep.english_req, `eng-${i}`)}
             ${fieldHtml("How to Apply", rep.how_to_apply, `app-${i}`)}
           </div>
 
-          <!-- Gaps & Action Bar -->
+          <!-- Gaps & Action Bar with Direct Apply Button -->
           <div class="flex flex-wrap items-center justify-between gap-4 pt-3 border-t border-slate-800/80 text-xs">
             <div class="space-y-1">
               ${(rep.unmet || []).length ? `<div class="text-rose-400 font-medium">⚠ Gaps: ${escapeHtml(rep.unmet.join("; "))}</div>` : `<div class="text-emerald-400 font-medium">✓ No hard eligibility disqualifiers found</div>`}
               ${(rep.unknown || []).length ? `<div class="text-amber-400/80 text-[11px]">Unverified factors: ${escapeHtml(rep.unknown.slice(0, 3).join("; "))}</div>` : ""}
             </div>
-            <!-- Action to Write Tailored SOP for THIS Scholarship -->
-            <button type="button" onclick="generateSopForCandidate('${r.candidate_id}', '${escapeHtml(cand.name).replace(/'/g, "\\'")}')" class="px-4 py-2 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 flex items-center gap-1.5 transition">
-              <svg class="w-3.5 h-3.5 text-indigo-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
-              <span>Draft Statement of Purpose for this Opportunity</span>
-            </button>
+            <!-- Dual Action Buttons -->
+            <div class="flex flex-wrap items-center gap-2.5">
+              <a href="${escapeHtml(applyUrl)}" target="_blank" rel="noopener" class="px-4 py-2 rounded-xl font-bold text-xs bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-600/25 flex items-center gap-1.5 transition">
+                <svg class="w-3.5 h-3.5 text-emerald-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/></svg>
+                <span>Direct Apply Link ↗</span>
+              </a>
+              <button type="button" onclick="generateSopForCandidate('${r.candidate_id}', '${escapeHtml(cand.name).replace(/'/g, "\\'")}')" class="px-4 py-2 rounded-xl font-bold text-xs bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/20 flex items-center gap-1.5 transition">
+                <svg class="w-3.5 h-3.5 text-indigo-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/></svg>
+                <span>Draft Statement of Purpose for this Opportunity</span>
+              </button>
+            </div>
           </div>
         </div>`;
     }).join("");
