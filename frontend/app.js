@@ -13,7 +13,6 @@ const AGENTS = [
 
 let currentRunId = null;
 let lastResult = null;
-let eventSource = null;
 let allEvents = [];
 let currentLogFilter = "all";
 let customResumeFile = null;
@@ -148,36 +147,89 @@ function handleEvent(evt) {
   }
 }
 
-function streamEvents(runId) {
-  if (eventSource) eventSource.close();
+async function streamRun(form) {
+  // Single-invocation SSE: create + execute + stream all in one request.
+  // (Serverless instances share no memory, so a second request could not see
+  // the run's events. The final frame carries the whole result.)
   allEvents = [];
-  $("eventLog").innerHTML = "";
+  const log = $("eventLog");
+  if (log) log.innerHTML = "";
   $("streamIndicator").className = "w-2 h-2 rounded-full bg-emerald-400 animate-pulse";
   $("streamStatusText").textContent = "SSE Stream Active";
 
-  eventSource = new EventSource(`/api/runs/${runId}/events`);
-  eventSource.onmessage = (msg) => {
+  const resp = await fetch("/api/runs/stream", { method: "POST", body: form });
+  if (!resp.ok || !resp.body) {
+    let detail = resp.statusText;
     try {
-      const evt = JSON.parse(msg.data);
-      if (evt.type === "stream_end") {
-        eventSource.close();
-        $("streamIndicator").className = "w-2 h-2 rounded-full bg-slate-500";
-        $("streamStatusText").textContent = "Run Complete";
-        fetchResult(runId);
-        return;
+      const j = await resp.json();
+      detail = j.detail || JSON.stringify(j);
+    } catch (e) { /* non-JSON error body */ }
+    throw new Error(detail);
+  }
+
+  const reader = resp.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+
+  const handleFrame = (frame) => {
+    for (const line of frame.split("\n")) {
+      if (line.startsWith(":") || !line.startsWith("data:")) continue; // heartbeat / ignore
+      let payload;
+      try { payload = JSON.parse(line.slice(5)); } catch (e) { continue; }
+      if (payload.type === "run_created") {
+        currentRunId = payload.run_id;
+        $("runStatus").textContent =
+          `Run ${currentRunId}${payload.demo_mode ? " (demo replay)" : ""}`;
+        showToast(`Started agent swarm for run ${currentRunId}`, "info");
+        continue;
       }
-      handleEvent(evt);
-    } catch (e) {
-      console.error("SSE parse error", e);
+      if (payload.type === "stream_end") {
+        handleStreamEnd(payload);
+        return true;
+      }
+      handleEvent(payload);
     }
+    return false;
   };
 
-  eventSource.onerror = () => {
-    eventSource.close();
-    $("streamIndicator").className = "w-2 h-2 rounded-full bg-amber-500";
-    $("streamStatusText").textContent = "Stream Reconnecting / Closed";
-    fetchResult(runId);
-  };
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let idx;
+    while ((idx = buf.indexOf("\n\n")) >= 0) {
+      const frame = buf.slice(0, idx);
+      buf = buf.slice(idx + 2);
+      if (handleFrame(frame)) {
+        try { reader.cancel(); } catch (e) { /* already closed */ }
+        return;
+      }
+    }
+  }
+  // Connection closed without a stream_end frame.
+  $("streamIndicator").className = "w-2 h-2 rounded-full bg-amber-500";
+  $("streamStatusText").textContent = "Stream Closed";
+  if (currentRunId) fetchResult(currentRunId);
+}
+
+function handleStreamEnd(payload) {
+  $("streamIndicator").className = "w-2 h-2 rounded-full bg-slate-500";
+  $("streamStatusText").textContent = "Run Complete";
+  if (payload.result && payload.result.profile) {
+    lastResult = payload.result;
+    renderResults(lastResult);
+    $("runStatus").textContent = "Verification & Ranking Complete.";
+    setRunBtnLoading(false);
+    showToast("Scholarship discovery & verification finished!", "success");
+  } else if (payload.result && payload.result.status === "failed") {
+    $("runStatus").textContent = "Run failed: " + (payload.result.error || "unknown error");
+    setRunBtnLoading(false);
+    showToast("Run failed — try Demo mode if the network or a quota is down", "error");
+  } else if (currentRunId) {
+    fetchResult(currentRunId);
+  } else {
+    setRunBtnLoading(false);
+  }
 }
 
 // --- FETCH RESULTS ---
@@ -185,6 +237,13 @@ async function fetchResult(runId) {
   $("runStatus").textContent = "Compiling verified dossier...";
   try {
     const resp = await fetch(`/api/runs/${runId}/result`);
+    if (!resp.ok) {
+      // Serverless fallback: result may live in another instance's memory.
+      setRunBtnLoading(false);
+      $("runStatus").textContent = "Run result not retrievable — check the event log above.";
+      showToast("Result endpoint unavailable (expected on serverless cold runs)", "warning");
+      return;
+    }
     const data = await resp.json();
     if (data.status && !data.profile && data.status !== "failed") {
       $("runStatus").textContent = `Status: ${data.status}...`;
@@ -607,7 +666,7 @@ window.generateSopForCandidate = async function(candId, candName) {
     const resp = await fetch(`/api/runs/${currentRunId}/sop`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ candidate_id: candId }),
+      body: JSON.stringify({ candidate_id: candId, state: lastResult }),
     });
     const data = await resp.json();
     if (data.sop) {
@@ -670,13 +729,7 @@ $("runBtn").addEventListener("click", async () => {
   renderAgentCards();
 
   try {
-    const resp = await fetch("/api/runs", { method: "POST", body: form });
-    const data = await resp.json();
-    if (!data.run_id) throw new Error(data.detail || JSON.stringify(data));
-    currentRunId = data.run_id;
-    $("runStatus").textContent = `Run ${currentRunId}${data.demo_mode ? " (demo replay)" : ""}`;
-    showToast(`Started agent swarm for run ${currentRunId}`, "info");
-    streamEvents(currentRunId);
+    await streamRun(form);
   } catch (err) {
     $("runStatus").textContent = "Failed to start: " + err;
     setRunBtnLoading(false);
@@ -846,12 +899,31 @@ $("downloadSop").addEventListener("click", () => {
   showToast("Downloaded SOP draft (.md)", "success");
 });
 
-$("downloadReport").addEventListener("click", () => {
-  if (!currentRunId) {
+$("downloadReport").addEventListener("click", async () => {
+  if (!lastResult) {
     showToast("Please run a pipeline first to export a report.", "warning");
     return;
   }
-  window.open(`/api/runs/${currentRunId}/export`, "_blank");
+  try {
+    // POST with the result we already hold: works even when server-side run
+    // storage lives in another serverless instance.
+    const resp = await fetch(`/api/runs/${currentRunId || "report"}/export`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ state: lastResult }),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const md = await resp.text();
+    const blob = new Blob([md], { type: "text/markdown" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `ScholarSwarm_Report_${currentRunId || "export"}.md`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast("Report exported (Markdown)", "success");
+  } catch (err) {
+    showToast("Export failed: " + err.message, "error");
+  }
 });
 
 // Initial agent cards render

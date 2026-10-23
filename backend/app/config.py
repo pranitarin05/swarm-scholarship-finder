@@ -37,6 +37,18 @@ class Settings(BaseSettings):
     max_scout_loops: int = 2
     max_critic_rounds: int = 2
 
+    # Demo replay pacing between events (seconds).
+    demo_event_delay: float = 0.35
+    # Hard ceiling for one run's pipeline (0 = auto: 270s on serverless, none locally).
+    max_run_seconds: float = 0.0
+
+    @property
+    def run_timeout(self) -> float:
+        """Seconds before a live run is aborted (0 = no timeout)."""
+        if self.max_run_seconds > 0:
+            return self.max_run_seconds
+        return 270.0 if os.environ.get("VERCEL") else 0.0
+
     user_agent: str = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"

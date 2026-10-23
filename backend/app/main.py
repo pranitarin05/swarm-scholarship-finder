@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,20 +39,18 @@ def _parse_json_form(value: str, fallback):
         return fallback
 
 
-@app.post("/api/runs")
-async def create_run(
-    resume: UploadFile = File(...),
-    marksheet: Optional[UploadFile] = File(None),
-    preferences: str = Form("{}"),
-    demo_mode: bool = Form(False),
-    inject_failure: str = Form(""),
-) -> dict:
-    """Store uploads, create a run, start the agent graph in the background."""
+async def _build_run(
+    resume: Optional[UploadFile],
+    marksheet: Optional[UploadFile],
+    preferences: str,
+    demo_mode: bool,
+    inject_failure: str,
+) -> tuple[str, Optional[RunState]]:
+    """Create run folder + state. Shared by POST /api/runs and /api/runs/stream."""
     if demo_mode:
         run_id = "demo-" + uuid.uuid4().hex[:8]
         run_store.create(run_id)
-        asyncio.create_task(_replay_demo(run_id))
-        return {"run_id": run_id, "demo_mode": True}
+        return run_id, None
 
     run_id = uuid.uuid4().hex[:12]
     ctx = run_store.create(run_id)
@@ -59,7 +58,7 @@ async def create_run(
     prefs_raw = _parse_json_form(preferences, {})
     prefs = Preferences.model_validate(prefs_raw) if isinstance(prefs_raw, dict) else Preferences()
 
-    resume_path = run_dir / (Path(resume.filename or "resume.pdf").name)
+    resume_path = run_dir / Path(resume.filename or "resume.pdf").name
     resume_path.write_bytes(await resume.read())
     marksheet_path = ""
     if marksheet is not None and (marksheet.filename or ""):
@@ -78,20 +77,110 @@ async def create_run(
     )
     if inject_failure:
         ctx.failure_mode = inject_failure
-    state_json = state.model_dump_json()
-    (run_dir / "state.json").write_text(state_json, encoding="utf-8")
+    (run_dir / "state.json").write_text(state.model_dump_json(), encoding="utf-8")
+    return run_id, state
+
+
+@app.post("/api/runs")
+async def create_run(
+    resume: UploadFile = File(...),
+    marksheet: Optional[UploadFile] = File(None),
+    preferences: str = Form("{}"),
+    demo_mode: bool = Form(False),
+    inject_failure: str = Form(""),
+) -> dict:
+    """Store uploads, create a run, start the agent graph in the background."""
+    run_id, state = await _build_run(resume, marksheet, preferences, demo_mode, inject_failure)
+    if state is None:
+        asyncio.create_task(_replay_demo(run_id))
+        return {"run_id": run_id, "demo_mode": True}
     asyncio.create_task(_execute(run_id, state, inject_fail=inject_failure))
     return {"run_id": run_id}
 
 
+@app.post("/api/runs/stream")
+async def create_run_stream(
+    resume: Optional[UploadFile] = File(None),
+    marksheet: Optional[UploadFile] = File(None),
+    preferences: str = Form("{}"),
+    demo_mode: bool = Form(False),
+    inject_failure: str = Form(""),
+) -> StreamingResponse:
+    """Single-invocation SSE run: create + execute + stream in ONE function call.
+
+    Serverless instances share neither memory nor disk, so the run must be
+    created, executed and streamed inside the same invocation. The client gets
+    `run_created`, then live agent events, then `stream_end` carrying the final
+    result — no follow-up request needed (which would hit another instance).
+    """
+    if not demo_mode and resume is None:
+        raise HTTPException(status_code=422, detail="resume PDF required unless demo_mode")
+    run_id, state = await _build_run(resume, marksheet, preferences, demo_mode, inject_failure)
+    if state is None:
+        task: asyncio.Task = asyncio.create_task(_replay_demo(run_id))
+    else:
+        task = asyncio.create_task(_execute(run_id, state, inject_fail=inject_failure))
+    return StreamingResponse(
+        _run_stream(run_id, task),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+async def _run_stream(run_id: str, task: asyncio.Task) -> AsyncIterator[str]:
+    """SSE generator for /api/runs/stream: run_created, events, heartbeat, result."""
+    ctx = run_store.get(run_id)
+    yield _sse({"type": "run_created", "run_id": run_id, "demo_mode": run_id.startswith("demo-")})
+    getter: asyncio.Task = asyncio.ensure_future(ctx.queue.get())
+    try:
+        while True:
+            done, _ = await asyncio.wait({getter}, timeout=15.0)
+            if not done:
+                yield ": ping\n\n"  # heartbeat keeps proxies from idling out
+                continue
+            event = getter.result()
+            if event is None:
+                break
+            getter = asyncio.ensure_future(ctx.queue.get())
+            yield _sse(event.model_dump())
+    finally:
+        if not getter.done():
+            getter.cancel()
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except BaseException:  # noqa: BLE001 - cancelled or crashed pipeline
+                pass
+    yield _sse({"type": "stream_end", "status": ctx.status, "result": ctx.result or {}})
+
+
+def _sse(payload: dict) -> str:
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+
 async def _execute(run_id: str, state: RunState, inject_fail: str = "") -> None:
     """Run the graph; always mark the run finished so SSE can close."""
+    timeout = settings.run_timeout
     try:
-        final = await run_pipeline(state, inject_fail=inject_fail)
+        if timeout:
+            final = await asyncio.wait_for(
+                run_pipeline(state, inject_fail=inject_fail), timeout=timeout
+            )
+        else:
+            final = await run_pipeline(state, inject_fail=inject_fail)
         result = final.model_dump(mode="json")
         emit_event(run_id, "supervisor", "done", "Run complete", {"status": "done"})
         run_store.set_result(run_id, result)
         run_store.set_status(run_id, "done")
+    except asyncio.TimeoutError:
+        emit_event(
+            run_id, "supervisor", "error",
+            f"Run aborted after {int(timeout)}s time budget (serverless limit)",
+        )
+        emit_event(run_id, "supervisor", "done", "Run ended with errors")
+        run_store.set_result(run_id, {"status": "failed", "error": "run_timeout"})
+        run_store.set_status(run_id, "failed")
     except Exception as exc:
         emit_event(
             run_id, "supervisor", "error",
@@ -124,7 +213,7 @@ async def _replay_demo(run_id: str) -> None:
             raw.get("message", ""),
             raw.get("data", {}),
         )
-        await asyncio.sleep(0.35)
+        await asyncio.sleep(settings.demo_event_delay)
     emit_event(run_id, "supervisor", "done", "Demo run complete")
     run_store.set_result(run_id, result)
     run_store.set_status(run_id, "done")
@@ -208,23 +297,29 @@ async def inject_failure(run_id: str, payload: dict) -> dict:
 
 @app.post("/api/runs/{run_id}/sop")
 async def regenerate_sop(run_id: str, payload: dict) -> dict:
-    """Regenerate the SOP for a chosen opportunity (candidate_id in body)."""
+    """Regenerate the SOP for a chosen opportunity (candidate_id in body).
+
+    Accepts an optional `state` (the run result) so the request still works on
+    serverless, where the live run context may live in another instance.
+    """
     ctx = run_store.get(run_id)
-    if ctx is None or not ctx.result:
+    state_dict = (ctx.result if ctx and ctx.result else None) or payload.get("state")
+    if not state_dict:
         raise HTTPException(status_code=404, detail="run not found or not complete")
     candidate_id = payload.get("candidate_id", "")
     from .agents.writer import write_sop
     from .llm import LLMClient
-    from .state import RunState
 
-    state = RunState.model_validate(ctx.result)
+    state = RunState.model_validate(state_dict)
     emit_event(run_id, "writer", "start", f"Regenerating SOP for {candidate_id}")
     output = await write_sop(state, candidate_id=candidate_id, llm=LLMClient())
     if output.get("sop"):
-        ctx.result["sop"] = output["sop"].model_dump(mode="json")
-        run_store.set_result(run_id, ctx.result)
+        sop = output["sop"].model_dump(mode="json")
+        if ctx and ctx.result:
+            ctx.result["sop"] = sop
+            run_store.set_result(run_id, ctx.result)
         emit_event(run_id, "writer", "done", "SOP regenerated")
-        return {"sop": output["sop"].model_dump(mode="json")}
+        return {"sop": sop}
     raise HTTPException(status_code=500, detail="SOP generation failed")
 
 
@@ -293,6 +388,24 @@ async def export_report(run_id: str) -> StreamingResponse:
             result = json.loads(disk.read_text(encoding="utf-8"))
     if not result:
         raise HTTPException(status_code=404, detail="run not found or incomplete")
+    return _markdown_download(run_id, result)
+
+
+@app.post("/api/runs/{run_id}/export")
+async def export_report_stateless(run_id: str, payload: dict) -> StreamingResponse:
+    """Download the report as Markdown from a result passed in the request body.
+
+    Serverless fallback: the client already holds the result in memory, so the
+    export never depends on server-side run storage.
+    """
+    ctx = run_store.get(run_id)
+    result = payload.get("state") or (ctx.result if ctx else {}) or {}
+    if not result:
+        raise HTTPException(status_code=404, detail="no result provided")
+    return _markdown_download(run_id, result)
+
+
+def _markdown_download(run_id: str, result: dict) -> StreamingResponse:
     md = _render_markdown_report(result)
     return StreamingResponse(
         iter([md]),

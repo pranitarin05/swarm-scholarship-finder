@@ -74,8 +74,8 @@ frontend/             plain HTML/CSS/JS + Tailwind CDN (no build step)
 data/sample_rahul/    fictional demo resume + marksheet
 data/demo_cache/      recorded run for offline demo mode
 docs/                 diagram.mmd, experiment_note.md, demo_script.md
-decision.txt          every design decision + why
-flow.txt              end-to-end flow in plain language
+decision.md           every design decision + why
+flow.md               end-to-end flow in plain language
 ```
 
 ## Trust policy

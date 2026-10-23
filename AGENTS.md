@@ -1,7 +1,7 @@
 # ScholarSwarm - Agent Rules (persist across the session)
 
 Hackathon project for TetraNoodle AI Hackathon 2026. Multi-agent AI Scholarship
-Finder. Build docs: decision.txt and flow.txt at repo root (read them first).
+Finder. Build docs: decision.md and flow.md at repo root (read them first).
 
 ## Goal
 7-agent LangGraph system: resume + marksheet + GitHub in -> 10+ real opportunities

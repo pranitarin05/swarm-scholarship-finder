@@ -1,0 +1,24 @@
+# Secrets and local environments — never upload
+.env
+.env.*
+!.env.example
+
+# Local virtualenvs and caches
+.venv/
+venv/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Runtime state (serverless uses /tmp instead)
+data/runs/
+data/cache/
+
+# Local dev artifacts
+uvicorn_out.txt
+uvicorn_err.txt
+server_pid.txt
+demo_record_log.txt
+demo_record_err.txt
+.vscode/
+.idea/

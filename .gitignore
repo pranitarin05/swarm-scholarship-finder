@@ -24,3 +24,5 @@ uvicorn_out.txt
 uvicorn_err.txt
 demo_record_*.txt
 .pytest_cache/
+.vercel/
+vercel_token.txt
