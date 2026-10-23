@@ -58,16 +58,25 @@ class GithubClient:
     async def enrich(self, username: str) -> GithubInfo:
         """Profile + repos + languages + stars + activity, or a warned stub."""
         info = GithubInfo(username=username, profile_url=f"https://github.com/{username}")
+
+        if not self.token:
+            info.warnings.append(
+                "No GITHUB_TOKEN set — using unauthenticated GitHub API "
+                "(rate-limited to 60 req/hr). Set GITHUB_TOKEN in .env for "
+                "higher limits and private repo access."
+            )
+
         try:
             profile = await self._get(f"{API}/users/{username}")
         except httpx.HTTPError as exc:
             info.warnings.append(
-                f"GitHub profile unavailable ({type(exc).__name__}); "
-                "enrichment degraded to resume-only"
+                f"GitHub profile unavailable for '{username}' "
+                f"({type(exc).__name__}); enrichment degraded to resume-only"
             )
             return info
         info.public_repos = profile.get("public_repos", 0)
         info.profile_url = profile.get("html_url", info.profile_url)
+
         try:
             raw_repos = await self._get(
                 f"{API}/users/{username}/repos",
@@ -76,6 +85,7 @@ class GithubClient:
         except httpx.HTTPError as exc:
             info.warnings.append(f"GitHub repos unavailable ({type(exc).__name__})")
             return info
+
         for raw in raw_repos:
             info.repos.append(
                 GithubRepo(
@@ -89,9 +99,13 @@ class GithubClient:
                     topics=raw.get("topics") or [],
                 )
             )
+
         info.total_stars = sum(r.stars for r in info.repos)
+
+        # Count languages; prefer original repos (non-forks) for accuracy
         counts: dict[str, int] = {}
-        for repo in info.repos:
+        original_repos = [r for r in info.repos if not r.fork] or info.repos
+        for repo in original_repos:
             if repo.language:
                 counts[repo.language] = counts.get(repo.language, 0) + 1
         info.top_languages = [
@@ -99,6 +113,7 @@ class GithubClient:
         ]
         info.activity = _activity_label(info.repos)
         return info
+
 
     async def readme(self, username: str, repo: str) -> str:
         """Fetch a repo README as plain text (empty string if unavailable)."""
@@ -129,8 +144,34 @@ def _activity_label(repos: list[GithubRepo]) -> str:
 
 
 def username_from_url(url: str) -> str:
-    """'https://github.com/rahul-ml' -> 'rahul-ml'."""
-    url = (url or "").strip().rstrip("/")
-    if "github.com/" in url:
-        return url.split("github.com/", 1)[1].split("/")[0]
-    return url
+    """Extract a GitHub username from any form of GitHub URL.
+
+    Handles:
+    - https://github.com/username
+    - https://github.com/username/repo
+    - https://github.com/username?tab=repositories#heading
+    - @username
+    - plain 'username'
+    - www.github.com/username
+    """
+    url = (url or "").strip()
+
+    # Strip leading '@' (common copy-paste artefact)
+    if url.startswith("@"):
+        url = url[1:]
+
+    # No URL scheme at all — treat as bare username or 'github.com/...'
+    if "github.com" not in url.lower():
+        # Already a bare username (no slashes, no dots)
+        return url.split("/")[0].split("?")[0].split("#")[0].strip()
+
+    # Normalise: drop scheme and www
+    import re as _re
+    url = _re.sub(r"^https?://(www\.)?", "", url, flags=_re.IGNORECASE)
+
+    # Now url is like: github.com/username[/repo][?query][#fragment]
+    path = url.split("github.com/", 1)[1]  # 'username[/...][?...][#...]'
+    username = path.split("/")[0]           # drop any sub-path
+    username = username.split("?")[0]       # drop query string
+    username = username.split("#")[0]       # drop fragment
+    return username.strip()
