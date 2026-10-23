@@ -1,6 +1,0 @@
-# Metadata lives in README.md; dependencies live in requirements.txt
-# (kept there because Vercel installs from requirements.txt and must not
-# try to build this repo as an installable package).
-
-[tool.vercel]
-entrypoint = "backend.app.main:app"

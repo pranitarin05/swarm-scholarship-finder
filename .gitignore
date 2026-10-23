@@ -26,3 +26,5 @@ demo_record_*.txt
 .pytest_cache/
 .vercel/
 vercel_token.txt
+.vercel
+.env*
