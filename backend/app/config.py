@@ -1,6 +1,8 @@
 """Application configuration loaded from .env (secrets never committed)."""
 from __future__ import annotations
 
+import os
+import tempfile
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -42,10 +44,18 @@ class Settings(BaseSettings):
 
     @property
     def runs_dir(self) -> Path:
+        if os.environ.get("VERCEL"):
+            d = Path(tempfile.gettempdir()) / "scholarswarm" / "runs"
+            d.mkdir(parents=True, exist_ok=True)
+            return d
         return self.data_dir / "runs"
 
     @property
     def cache_dir(self) -> Path:
+        if os.environ.get("VERCEL"):
+            d = Path(tempfile.gettempdir()) / "scholarswarm" / "cache"
+            d.mkdir(parents=True, exist_ok=True)
+            return d
         return self.data_dir / "cache"
 
     @property
