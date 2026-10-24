@@ -19,7 +19,7 @@ cp .env.example .env   # add your GROQ_API_KEY (optional: TAVILY/SERPER/GITHUB_T
 .venv\Scripts\uvicorn backend.app.main:app --reload
 ```
 
-Open **http://127.0.0.1:8000**, upload the sample files from `data/sample_rahul/`, click **Find my scholarships**.
+Open **https://scholarswarm-rho.vercel.app/**, upload the sample files from `data/sample_rahul/`, click **Find my scholarships**.
 
 Linux/macOS: `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt && .venv/bin/uvicorn backend.app.main:app --reload`
 
