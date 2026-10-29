@@ -76,23 +76,24 @@ class GroqProvider(Provider):
 
     async def chat(self, messages, temperature=0.2) -> str:
         async with httpx.AsyncClient(timeout=60.0) as client:
+            body = {
+                "model": self.model,
+                "messages": [m.model_dump() for m in messages],
+                "temperature": temperature,
+                "response_format": {"type": "json_object"},
+            }
             resp = await client.post(
                 self.URL,
                 headers={"Authorization": f"Bearer {self.api_key}"},
-                json={
-                    "model": self.model,
-                    "messages": [m.model_dump() for m in messages],
-                    "temperature": temperature,
-                    "response_format": {"type": "json_object"},
-                },
+                json=body,
             )
             if resp.status_code == 400:
-                payload = dict(resp.json())
-                payload.pop("response_format", None)
+                fallback_body = dict(body)
+                fallback_body.pop("response_format", None)
                 resp = await client.post(
                     self.URL,
                     headers={"Authorization": f"Bearer {self.api_key}"},
-                    json=payload,
+                    json=fallback_body,
                 )
             resp.raise_for_status()
             data = resp.json()

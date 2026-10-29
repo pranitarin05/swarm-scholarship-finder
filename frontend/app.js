@@ -221,6 +221,8 @@ function handleStreamEnd(payload) {
     $("runStatus").textContent = "Verification & Ranking Complete.";
     setRunBtnLoading(false);
     showToast("Scholarship discovery & verification finished!", "success");
+    const prof = $("profileSection");
+    if (prof) prof.scrollIntoView({ behavior: "smooth" });
   } else if (payload.result && payload.result.status === "failed") {
     $("runStatus").textContent = "Run failed: " + (payload.result.error || "unknown error");
     setRunBtnLoading(false);
@@ -347,7 +349,11 @@ function renderResults(data) {
   const enriched = data.enriched || {};
   const github = enriched.github || {};
 
-  $("profileSection").classList.remove("hidden");
+  const profSec = $("profileSection");
+  if (profSec) {
+    profSec.classList.remove("hidden");
+    profSec.style.display = "flex";
+  }
   
   const skillsPills = (profile.skills || []).slice(0, 12).map((s) => 
     `<span class="px-2.5 py-1 rounded-lg bg-indigo-950/60 border border-indigo-500/20 text-indigo-300 text-xs">${escapeHtml(s)}</span>`
@@ -406,7 +412,11 @@ function renderResults(data) {
   // 2. Discovered Candidates Table
   const candidates = data.candidates || [];
   if (candidates.length) {
-    $("candidatesSection").classList.remove("hidden");
+    const candSec = $("candidatesSection");
+    if (candSec) {
+      candSec.classList.remove("hidden");
+      candSec.style.display = "flex";
+    }
     $("candidateCount").textContent = `${candidates.length} programs`;
     const reportById = Object.fromEntries((data.reports || []).map((r) => [r.candidate_id, r]));
 
@@ -455,7 +465,11 @@ function renderResults(data) {
   // 3. Top 5 Ranked Recommendations
   const top5 = data.ranked || [];
   if (top5.length) {
-    $("top5Section").classList.remove("hidden");
+    const topSec = $("top5Section");
+    if (topSec) {
+      topSec.classList.remove("hidden");
+      topSec.style.display = "flex";
+    }
     const candById = Object.fromEntries(candidates.map((c) => [c.id, c]));
     const repById = Object.fromEntries((data.reports || []).map((r) => [r.candidate_id, r]));
 
@@ -589,7 +603,11 @@ function renderResults(data) {
 }
 
 function renderSop(sop) {
-  $("sopSection").classList.remove("hidden");
+  const sopSec = $("sopSection");
+  if (sopSec) {
+    sopSec.classList.remove("hidden");
+    sopSec.style.display = "flex";
+  }
   $("sopEditor").value = sop.sop_markdown || "";
   renderFormattedMarkdown(sop.sop_markdown || "");
 
@@ -724,8 +742,12 @@ $("runBtn").addEventListener("click", async () => {
 
   setRunBtnLoading(true);
   $("runStatus").textContent = "Orchestrating agent swarm...";
-  $("timelineSection").classList.remove("hidden");
-  $("timelineSection").scrollIntoView({ behavior: "smooth" });
+  const timeSec = $("timelineSection");
+  if (timeSec) {
+    timeSec.classList.remove("hidden");
+    timeSec.style.display = "flex";
+  }
+  timeSec.scrollIntoView({ behavior: "smooth" });
   renderAgentCards();
 
   try {

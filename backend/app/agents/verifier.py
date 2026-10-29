@@ -242,7 +242,7 @@ async def verify_one(
         {"candidate": candidate.id},
     )
     prompt = EXTRACT_PROMPT.format(
-        name=candidate.name, url=url, text=page.text[:12000]
+        name=candidate.name, url=url, text=page.text[:6000]
     )
     try:
         facts = await asyncio.wait_for(

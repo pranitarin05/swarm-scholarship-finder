@@ -58,6 +58,12 @@ html, body {
   background-size: 24px 24px;
 }
 
+/* Visibility utility - ensures elements toggle correctly when class is removed */
+.hidden {
+  display: none !important;
+}
+
+
 ::selection {
   background-color: var(--primary);
   color: var(--on-primary);

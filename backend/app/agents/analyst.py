@@ -8,9 +8,8 @@ from ..llm import LLMClient, llm_client
 from ..state import StudentProfile
 from ..tools.pdf import extract_pdf_text
 
-# Maximum characters of combined PDF text sent to the LLM.
-# 32 000 chars covers a dense 8–10 page CV + 4-page marksheet comfortably.
-MAX_TEXT_CHARS = 32_000
+# Maximum characters of combined PDF text sent to the LLM (16k chars ~ 4k tokens, safe for Groq limits).
+MAX_TEXT_CHARS = 16_000
 
 SYSTEM = (
     "You are a meticulous admissions-profile analyst. Extract ONLY what is "
